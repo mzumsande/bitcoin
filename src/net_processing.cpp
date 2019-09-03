@@ -2164,6 +2164,16 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                 // Relay to a limited number of other nodes
                 RelayAddress(addr, fReachable, connman);
             }
+            // Regtest Address Mocking: Map local addresses for addrman
+            // TODO MZ: use argument to bitcoind instead of "regtest"
+            if (Params().NetworkIDString() == "regtest")
+            {
+                std::string ip = std::to_string(addr.GetPort() % 20) + ".0.0.1";
+                CNetAddr netaddr;
+                LookupHost(ip.c_str(), netaddr, true);
+                addr.SetIP(netaddr);
+            }
+
             // Do not store addresses outside our network
             if (fReachable)
                 vAddrOk.push_back(addr);

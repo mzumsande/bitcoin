@@ -1819,8 +1819,19 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
                     return;
                 LogPrint(BCLog::NET, "Making feeler connection to %s\n", addrConnect.ToString());
             }
-
-            OpenNetworkConnection(addrConnect, (int)setConnected.size() >= std::min(nMaxConnections - 1, 2), &grant, nullptr, false, fFeeler);
+            // Regtest Address Mocking: change back mocked addresses to local ones
+            // TODO MZ: use argument to bitcoind instead of "regtest"
+            if (Params().NetworkIDString() == "regtest"){
+                CNetAddr netaddr;
+                LookupHost("127.0.0.1", netaddr, true);
+                addrConnect.SetIP(netaddr);
+                std::string ip = "127.0.0.1:" + std::to_string(addrConnect.GetPort());
+                OpenNetworkConnection(addrConnect, (int)setConnected.size() >= std::min(nMaxConnections - 1, 2), &grant, ip.c_str(), false, fFeeler);
+            }
+            else
+            {
+                OpenNetworkConnection(addrConnect, (int)setConnected.size() >= std::min(nMaxConnections - 1, 2), &grant, nullptr, false, fFeeler);
+            }
         }
     }
 }
