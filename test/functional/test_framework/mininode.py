@@ -126,6 +126,20 @@ class P2PConnection(asyncio.Protocol):
         conn_gen = lambda: loop.call_soon_threadsafe(loop.create_task, conn_gen_unsafe)
         return conn_gen
 
+    def create_server(self, dstaddr, dstport, net="regtest"):
+        assert not self.is_connected
+        self.dstaddr = dstaddr
+        self.dstport = dstport
+        self.on_connection_send_msg = None
+        self.recvbuf = b""
+        self.magic_bytes = MAGIC_BYTES[net]
+
+        loop = NetworkThread.network_event_loop
+        conn_gen_unsafe = loop.create_server(lambda: self, host=self.dstaddr, port=self.dstport)
+        fut = asyncio.run_coroutine_threadsafe(conn_gen_unsafe, loop)
+        conn_gen = fut.result()
+        return conn_gen
+
     def peer_disconnect(self):
         # Connection could have already been closed by other end.
         NetworkThread.network_event_loop.call_soon_threadsafe(lambda: self._transport and self._transport.abort())
@@ -260,7 +274,7 @@ class P2PInterface(P2PConnection):
 
     Individual testcases should subclass this and override the on_* methods
     if they want to alter message handling behaviour."""
-    def __init__(self):
+    def __init__(self, inbound = True):
         super().__init__()
 
         # Track number of messages of each type received and the most recent
@@ -273,6 +287,7 @@ class P2PInterface(P2PConnection):
 
         # The network services received from the peer
         self.nServices = 0
+        self.inbound = inbound
 
     def peer_connect(self, *args, services=NODE_NETWORK|NODE_WITNESS, send_version=True, **kwargs):
         create_conn = super().peer_connect(*args, **kwargs)
@@ -346,12 +361,19 @@ class P2PInterface(P2PConnection):
         self.send_message(msg_pong(message.nonce))
 
     def on_verack(self, message):
-        pass
+        if(self.inbound):
+            pass
+        else:
+            self.send_message(msg_verack())
 
     def on_version(self, message):
         assert message.nVersion >= MIN_VERSION_SUPPORTED, "Version {} received. Test framework only supports versions greater than {}".format(message.nVersion, MIN_VERSION_SUPPORTED)
-        self.send_message(msg_verack())
         self.nServices = message.nServices
+        if(self.inbound):
+            self.send_message(msg_verack())
+        else:
+            self.send_message(msg_version())
+
 
     # Connection helper methods
 

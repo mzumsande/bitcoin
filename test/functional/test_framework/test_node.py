@@ -30,6 +30,7 @@ from .util import (
     rpc_url,
     wait_until,
     p2p_port,
+    mininode_port,
 )
 
 BITCOIND_PROC_WAIT_TIMEOUT = 60
@@ -494,6 +495,15 @@ class TestNode():
         if wait_for_verack:
             p2p_conn.wait_for_verack()
 
+        return p2p_conn
+
+    def add_listening_conn(self, p2p_conn, **kwargs):
+        if 'dstport' not in kwargs:
+            kwargs['dstport'] = mininode_port(len(self.p2ps))
+        if 'dstaddr' not in kwargs:
+            kwargs['dstaddr'] = '127.0.0.1'
+        p2p_conn.create_server(**kwargs)
+        self.p2ps.append(p2p_conn)
         return p2p_conn
 
     @property

@@ -227,6 +227,8 @@ MAX_NODES = 12
 PORT_MIN = 11000
 # The number of ports to "reserve" for p2p and rpc, each
 PORT_RANGE = 5000
+# The maximum number of mininodes that listen on a port for messages from a node
+MAX_MININODE_LISTEN = 20
 
 class PortSeed:
     # Must be initialized with a unique integer for each process
@@ -263,6 +265,11 @@ def p2p_port(n):
 
 def rpc_port(n):
     return PORT_MIN + PORT_RANGE + n + (MAX_NODES * PortSeed.n) % (PORT_RANGE - 1 - MAX_NODES)
+
+def mininode_port(n):
+    assert n <= MAX_MININODE_LISTEN
+    # TODO: improve this logic
+    return PORT_MIN + MAX_NODES + n + (MAX_NODES * PortSeed.n) % (PORT_RANGE - 1 - MAX_NODES)
 
 def rpc_url(datadir, i, chain, rpchost):
     rpc_u, rpc_p = get_auth_cookie(datadir, chain)
