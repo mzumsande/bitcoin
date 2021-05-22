@@ -435,7 +435,7 @@ public:
         assert(genesis.hashMerkleRoot == uint256S("0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"));
 
         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
-        vSeeds.clear();      //!< Regtest mode doesn't have any DNS seeds.
+        vSeeds.emplace_back("dummySeed");
 
         fDefaultConsistencyChecks = true;
         fRequireStandard = true;
