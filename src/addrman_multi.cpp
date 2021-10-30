@@ -267,6 +267,10 @@ void AddrManMultiImpl::Unserialize(Stream& s_)
             s >> info;
         }
         info.fInTried = i >= read_new;
+
+        // Don't store the entry in the new bucket if it's not a valid address for our addrman
+        if(!info.IsValid()) continue;
+
         for (unsigned int i = 0; i < sources; ++i) {
             if (i) s >> info.source;
             info.Rebucket(nKey, m_asmap);
