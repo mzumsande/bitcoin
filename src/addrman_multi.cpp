@@ -531,9 +531,6 @@ bool AddrManMultiImpl::Good_(const CService& addr, bool test_before_evict, int64
     // if it is already in the tried set, don't do anything else
     if (info.fInTried) return false;
 
-    // find a bucket it is in now
-    std::advance(it, insecure_rand.randrange(CountAddr(addr)));
-
     // which tried bucket to move the entry to
     int tried_bucket = info.GetTriedBucket(nKey, m_asmap);
     int tried_bucket_pos = info.GetBucketPosition(nKey, false, tried_bucket);
