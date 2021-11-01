@@ -494,7 +494,10 @@ bool AddrManMultiImpl::AddSingle(const CAddress& addr, const CNetAddr& source, i
     bool fInsert = it_existing == m_index.get<ByBucket>().end();
     if (it_existing == m_index.get<ByBucket>().end() || static_cast<const CService&>(*it_existing) != addr) {
         if (!fInsert) {
-            const AddrInfo& infoExisting = *it_existing;
+            // Must use the main entry for IsTerrible() (for an up-to-date nTime etc.)
+            auto it_canonical = m_index.get<ByAddress>().find(std::pair<const CService&, bool>(*it_existing, false));
+            assert(it_canonical != m_index.get<ByAddress>().end());
+            const AddrInfo& infoExisting = *it_canonical;
             if (infoExisting.IsTerrible() || (!alias && CountAddr(infoExisting) > 1)) {
                 // Overwriting the existing new table entry.
                 fInsert = true;
