@@ -546,6 +546,8 @@ std::string ConnectionTypeAsString(ConnectionType conn_type)
         return "block-relay-only";
     case ConnectionType::ADDR_FETCH:
         return "addr-fetch";
+    case ConnectionType::MANUAL_BLOCK_RELAY:
+        return "manual-block-relay-only";
     } // no default case, so the compiler can warn about missing cases
 
     assert(false);
@@ -1222,6 +1224,7 @@ bool CConnman::AddConnection(const std::string& address, ConnectionType conn_typ
     switch (conn_type) {
     case ConnectionType::INBOUND:
     case ConnectionType::MANUAL:
+    case ConnectionType::MANUAL_BLOCK_RELAY:
         return false;
     case ConnectionType::OUTBOUND_FULL_RELAY:
         max_connections = m_max_outbound_full_relay;
@@ -1953,6 +1956,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
                 switch (pnode->m_conn_type) {
                     case ConnectionType::INBOUND:
                     case ConnectionType::MANUAL:
+                    case ConnectionType::MANUAL_BLOCK_RELAY:
                         break;
                     case ConnectionType::OUTBOUND_FULL_RELAY:
                     case ConnectionType::BLOCK_RELAY:
@@ -2978,7 +2982,7 @@ CNode::CNode(NodeId idIn, ServiceFlags nLocalServicesIn, SOCKET hSocketIn, const
 {
     if (inbound_onion) assert(conn_type_in == ConnectionType::INBOUND);
     hSocket = hSocketIn;
-    if (conn_type_in != ConnectionType::BLOCK_RELAY) {
+    if (conn_type_in != ConnectionType::BLOCK_RELAY && conn_type_in != ConnectionType::MANUAL_BLOCK_RELAY) {
         m_tx_relay = std::make_unique<TxRelay>();
     }
 

@@ -1273,7 +1273,7 @@ void PeerManagerImpl::FinalizeNode(const CNode& node)
     }
     } // cs_main
     if (node.fSuccessfullyConnected && misbehavior == 0 &&
-        !node.IsBlockOnlyConn() && !node.IsInboundConn()) {
+        !node.IsBlockOnlyConn() && !node.IsManualBlockOnlyConn() && !node.IsInboundConn()) {
         // Only change visible addrman state for full outbound peers.  We don't
         // call Connected() for feeler connections since they don't have
         // fSuccessfullyConnected set.
@@ -4100,7 +4100,7 @@ bool PeerManagerImpl::MaybeDiscourageAndDisconnect(CNode& pnode, Peer& peer)
         return false;
     }
 
-    if (pnode.IsManualConn()) {
+    if (pnode.IsManualConn() || pnode.IsManualBlockOnlyConn()) {
         // We never disconnect or discourage manual peers for bad behavior
         LogPrintf("Warning: not punishing manually connected peer %d!\n", peer.m_id);
         return false;
@@ -4567,7 +4567,7 @@ bool PeerManagerImpl::SetupAddressRelay(const CNode& node, Peer& peer)
     // We don't participate in addr relay with outbound block-relay-only
     // connections to prevent providing adversaries with the additional
     // information of addr traffic to infer the link.
-    if (node.IsBlockOnlyConn()) return false;
+    if (node.IsBlockOnlyConn() || node.IsManualBlockOnlyConn()) return false;
 
     if (!peer.m_addr_relay_enabled.exchange(true)) {
         // First addr message we have received from the peer, initialize

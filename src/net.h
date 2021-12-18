@@ -178,6 +178,17 @@ enum class ConnectionType {
      * AddrMan is empty.
      */
     ADDR_FETCH,
+
+    /**
+     * Manual Block-relay-only connections are manually added nodes (via -addnode)
+     * that behave like BLOCK_RELAY connections in that they don't participate in
+     * transaction and address relay. When connected to a privacy network such as
+     * Tor, manual block-relay-only connections to IPv4 or IPv6 nodes could
+     * used for hardening against eclipse attacks, while at the same time
+     * making fingerprinting attacks more difficult and preserving a higher degree
+     * of privacy by not transmitting transactions / addresses over these links.
+     */
+    MANUAL_BLOCK_RELAY,
 };
 
 /** Convert ConnectionType enum to a string value */
@@ -467,6 +478,7 @@ public:
             case ConnectionType::MANUAL:
             case ConnectionType::ADDR_FETCH:
             case ConnectionType::FEELER:
+            case ConnectionType::MANUAL_BLOCK_RELAY:
                 return false;
         } // no default case, so the compiler can warn about missing cases
 
@@ -497,10 +509,16 @@ public:
         return m_conn_type == ConnectionType::INBOUND;
     }
 
+    bool IsManualBlockOnlyConn() const
+    {
+        return m_conn_type == ConnectionType::MANUAL_BLOCK_RELAY;
+    }
+
     bool ExpectServicesFromConn() const {
         switch (m_conn_type) {
             case ConnectionType::INBOUND:
             case ConnectionType::MANUAL:
+            case ConnectionType::MANUAL_BLOCK_RELAY:
             case ConnectionType::FEELER:
                 return false;
             case ConnectionType::OUTBOUND_FULL_RELAY:
