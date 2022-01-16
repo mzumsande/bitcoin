@@ -170,6 +170,8 @@ class NetTest(BitcoinTestFramework):
         assert_equal(added_nodes[0]['addednode'], ip_port)
         # check that node cannot be added again
         assert_raises_rpc_error(-23, "Node already added", self.nodes[0].addnode, node=ip_port, command='add')
+        # check that the node cannot be added again as block-relay-only
+        assert_raises_rpc_error(-23, "Node already added", self.nodes[0].addnode, node=ip_port, command='add', block_relay_only='true')
         # check that node can be removed
         self.nodes[0].addnode(node=ip_port, command='remove')
         assert_equal(self.nodes[0].getaddednodeinfo(), [])

@@ -2147,7 +2147,7 @@ std::vector<AddedNodeInfo> CConnman::GetAddedNodeInfo() const
 {
     std::vector<AddedNodeInfo> ret;
 
-    std::list<std::string> lAddresses(0);
+    std::list<AddedNodeEntry> lAddresses(0);
     {
         LOCK(m_added_nodes_mutex);
         ret.reserve(m_added_nodes.size());
@@ -2171,9 +2171,9 @@ std::vector<AddedNodeInfo> CConnman::GetAddedNodeInfo() const
         }
     }
 
-    for (const std::string& strAddNode : lAddresses) {
-        CService service(LookupNumeric(strAddNode, Params().GetDefaultPort(strAddNode)));
-        AddedNodeInfo addedNode{strAddNode, CService(), false, false};
+    for (auto nodes_to_add : lAddresses) {
+        CService service(LookupNumeric(nodes_to_add.m_node_name, Params().GetDefaultPort(nodes_to_add.m_node_name)));
+        AddedNodeInfo addedNode{nodes_to_add.m_node_name, CService(), false, false, nodes_to_add.m_block_relay_only};
         if (service.IsValid()) {
             // strAddNode is an IP:port
             auto it = mapConnected.find(service);
@@ -2184,7 +2184,7 @@ std::vector<AddedNodeInfo> CConnman::GetAddedNodeInfo() const
             }
         } else {
             // strAddNode is a name
-            auto it = mapConnectedByName.find(strAddNode);
+            auto it = mapConnectedByName.find(nodes_to_add.m_node_name);
             if (it != mapConnectedByName.end()) {
                 addedNode.resolvedAddress = it->second.second;
                 addedNode.fConnected = true;
@@ -2214,7 +2214,8 @@ void CConnman::ThreadOpenAddedConnections()
                 }
                 tried = true;
                 CAddress addr(CService(), NODE_NONE);
-                OpenNetworkConnection(addr, false, &grant, info.strAddedNode.c_str(), ConnectionType::MANUAL);
+                ConnectionType conn_type{info.m_block_relay_only ? ConnectionType::MANUAL_BLOCK_RELAY : ConnectionType::MANUAL};
+                OpenNetworkConnection(addr, false, &grant, info.strAddedNode.c_str(), conn_type);
                 if (!interruptNet.sleep_for(std::chrono::milliseconds(500)))
                     return;
             }
@@ -2781,22 +2782,22 @@ std::vector<CAddress> CConnman::GetAddresses(CNode& requestor, size_t max_addres
     return cache_entry.m_addrs_response_cache;
 }
 
-bool CConnman::AddNode(const std::string& strNode)
+bool CConnman::AddNode(const std::string& strNode, bool block_relay_only)
 {
     LOCK(m_added_nodes_mutex);
-    for (const std::string& it : m_added_nodes) {
-        if (strNode == it) return false;
+    for (const auto it : m_added_nodes) {
+        if (strNode == it.m_node_name) return false;
     }
 
-    m_added_nodes.push_back(strNode);
+    m_added_nodes.push_back(AddedNodeEntry{strNode, block_relay_only});
     return true;
 }
 
 bool CConnman::RemoveAddedNode(const std::string& strNode)
 {
     LOCK(m_added_nodes_mutex);
-    for(std::vector<std::string>::iterator it = m_added_nodes.begin(); it != m_added_nodes.end(); ++it) {
-        if (strNode == *it) {
+    for (auto it = m_added_nodes.begin(); it != m_added_nodes.end(); ++it) {
+        if (strNode == it->m_node_name) {
             m_added_nodes.erase(it);
             return true;
         }

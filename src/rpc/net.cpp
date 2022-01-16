@@ -278,7 +278,7 @@ static RPCHelpMan addnode()
                 {
                     {"node", RPCArg::Type::STR, RPCArg::Optional::NO, "The node (see getpeerinfo for nodes)"},
                     {"command", RPCArg::Type::STR, RPCArg::Optional::NO, "'add' to add a node to the list, 'remove' to remove a node from the list, 'onetry' to try a connection to the node once"},
-                    {"block-relay-only", RPCArg::Type::BOOL, RPCArg::Default{false}, "If set, treat as block-relay-only connection (deactivating transaction and addr relay on this connection)."},
+                    {"block_relay_only", RPCArg::Type::BOOL, RPCArg::Default{false}, "If set, treat as block-relay-only connection (deactivating transaction and addr relay on this connection)."},
                 },
                 RPCResult{RPCResult::Type::NONE, "", ""},
                 RPCExamples{
@@ -315,7 +315,7 @@ static RPCHelpMan addnode()
 
     if (strCommand == "add")
     {
-        if (!connman.AddNode(strNode)) {
+        if (!connman.AddNode(strNode, block_relay_only)) {
             throw JSONRPCError(RPC_CLIENT_NODE_ALREADY_ADDED, "Error: Node already added");
         }
     }
@@ -449,6 +449,7 @@ static RPCHelpMan getaddednodeinfo()
                         {
                             {RPCResult::Type::STR, "addednode", "The node IP address or name (as provided to addnode)"},
                             {RPCResult::Type::BOOL, "connected", "If connected"},
+                            {RPCResult::Type::BOOL, "block-relay-only", "If block-relay-only"},
                             {RPCResult::Type::ARR, "addresses", "Only when connected = true",
                             {
                                 {RPCResult::Type::OBJ, "", "",
@@ -491,6 +492,7 @@ static RPCHelpMan getaddednodeinfo()
         UniValue obj(UniValue::VOBJ);
         obj.pushKV("addednode", info.strAddedNode);
         obj.pushKV("connected", info.fConnected);
+        obj.pushKV("block-relay-only", info.m_block_relay_only);
         UniValue addresses(UniValue::VARR);
         if (info.fConnected) {
             UniValue address(UniValue::VOBJ);

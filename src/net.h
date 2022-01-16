@@ -93,6 +93,12 @@ struct AddedNodeInfo
     CService resolvedAddress;
     bool fConnected;
     bool fInbound;
+    bool m_block_relay_only;
+};
+
+struct AddedNodeEntry {
+    std::string m_node_name;
+    bool m_block_relay_only;
 };
 
 class CNodeStats;
@@ -811,7 +817,9 @@ public:
         vWhitelistedRange = connOptions.vWhitelistedRange;
         {
             LOCK(m_added_nodes_mutex);
-            m_added_nodes = connOptions.m_added_nodes;
+            for (auto addedNode : connOptions.m_added_nodes) {
+                m_added_nodes.push_back(AddedNodeEntry{addedNode, false});
+            }
         }
         m_onion_binds = connOptions.onion_binds;
     }
@@ -895,7 +903,7 @@ public:
     // Count the number of block-relay-only peers we have over our limit.
     int GetExtraBlockRelayCount() const;
 
-    bool AddNode(const std::string& node);
+    bool AddNode(const std::string& node, bool block_relay_only);
     bool RemoveAddedNode(const std::string& node);
     std::vector<AddedNodeInfo> GetAddedNodeInfo() const;
 
@@ -1116,7 +1124,7 @@ private:
     AddrMan& addrman;
     std::deque<std::string> m_addr_fetches GUARDED_BY(m_addr_fetches_mutex);
     Mutex m_addr_fetches_mutex;
-    std::vector<std::string> m_added_nodes GUARDED_BY(m_added_nodes_mutex);
+    std::vector<AddedNodeEntry> m_added_nodes GUARDED_BY(m_added_nodes_mutex);
     mutable Mutex m_added_nodes_mutex;
     std::vector<CNode*> m_nodes GUARDED_BY(m_nodes_mutex);
     std::list<CNode*> m_nodes_disconnected;
