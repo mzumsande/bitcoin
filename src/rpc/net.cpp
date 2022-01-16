@@ -278,6 +278,7 @@ static RPCHelpMan addnode()
                 {
                     {"node", RPCArg::Type::STR, RPCArg::Optional::NO, "The node (see getpeerinfo for nodes)"},
                     {"command", RPCArg::Type::STR, RPCArg::Optional::NO, "'add' to add a node to the list, 'remove' to remove a node from the list, 'onetry' to try a connection to the node once"},
+                    {"block-relay-only", RPCArg::Type::BOOL, RPCArg::Default{false}, "If set, treat as block-relay-only connection (deactivating transaction and addr relay on this connection)."},
                 },
                 RPCResult{RPCResult::Type::NONE, "", ""},
                 RPCExamples{
@@ -293,6 +294,7 @@ static RPCHelpMan addnode()
         throw std::runtime_error(
             self.ToString());
     }
+    const bool block_relay_only{request.params[2].isTrue()};
 
     NodeContext& node = EnsureAnyNodeContext(request.context);
     CConnman& connman = EnsureConnman(node);
@@ -302,7 +304,12 @@ static RPCHelpMan addnode()
     if (strCommand == "onetry")
     {
         CAddress addr;
-        connman.OpenNetworkConnection(addr, false, nullptr, strNode.c_str(), ConnectionType::MANUAL);
+        if(block_relay_only) {
+            connman.OpenNetworkConnection(addr, false, nullptr, strNode.c_str(), ConnectionType::MANUAL_BLOCK_RELAY);
+        }
+        else {
+            connman.OpenNetworkConnection(addr, false, nullptr, strNode.c_str(), ConnectionType::MANUAL);
+        }
         return NullUniValue;
     }
 
