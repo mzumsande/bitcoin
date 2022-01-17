@@ -646,10 +646,15 @@ std::pair<CAddress, int64_t> AddrManMultiImpl::Select_(bool newOnly) const
             }
             // If the bucket is entirely empty, start over with a (likely) different one.
             if (i == ADDRMAN_BUCKET_SIZE) continue;
+
+            // use non-alias entry to return and for GetChance
+            auto it_canonical = m_index.get<ByAddress>().find(std::pair<const CService&, bool>(*it, false));
+            assert(it_canonical != m_index.get<ByAddress>().end());
+
             // With probability GetChance() * fChanceFactor, return the entry.
-            if (insecure_rand.randbits(30) < fChanceFactor * it->GetChance() * (1 << 30)) {
-                LogPrint(BCLog::ADDRMAN, "Selected %s from new\n", it->ToString());
-                return {*it, it->nLastTry};
+            if (insecure_rand.randbits(30) < fChanceFactor * it_canonical->GetChance() * (1 << 30)) {
+                LogPrint(BCLog::ADDRMAN, "Selected %s from new\n", it_canonical->ToString());
+                return {*it_canonical, it_canonical->nLastTry};
             }
             // Otherwise start over with a (likely) different bucket, and increased chance factor.
             fChanceFactor *= 1.2;
