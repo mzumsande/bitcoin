@@ -43,14 +43,24 @@ static constexpr size_t ADDRMAN_SET_TRIED_COLLISION_SIZE{10};
 /** The maximum time we'll spend trying to resolve a tried table collision, in seconds */
 static constexpr int64_t ADDRMAN_TEST_WINDOW{40*60}; // 40 minutes
 
-int AddrInfo::GetTriedBucket(const uint256& nKey, const std::vector<bool>& asmap) const
+/** Total number of buckets for tried addresses */
+static constexpr int32_t ADDRMAN_TRIED_BUCKET_COUNT_LOG2{8};
+static constexpr int ADDRMAN_TRIED_BUCKET_COUNT{1 << ADDRMAN_TRIED_BUCKET_COUNT_LOG2};
+/** Total number of buckets for new addresses */
+static constexpr int32_t ADDRMAN_NEW_BUCKET_COUNT_LOG2{10};
+static constexpr int ADDRMAN_NEW_BUCKET_COUNT{1 << ADDRMAN_NEW_BUCKET_COUNT_LOG2};
+/** Maximum allowed number of entries in buckets for new and tried addresses */
+static constexpr int32_t ADDRMAN_BUCKET_SIZE_LOG2{6};
+static constexpr int ADDRMAN_BUCKET_SIZE{1 << ADDRMAN_BUCKET_SIZE_LOG2};
+
+int AddrInfoMulti::GetTriedBucket(const uint256& nKey, const std::vector<bool>& asmap) const
 {
     uint64_t hash1 = (CHashWriter(SER_GETHASH, 0) << nKey << GetKey()).GetCheapHash();
     uint64_t hash2 = (CHashWriter(SER_GETHASH, 0) << nKey << GetGroup(asmap) << (hash1 % ADDRMAN_TRIED_BUCKETS_PER_GROUP)).GetCheapHash();
     return hash2 % ADDRMAN_TRIED_BUCKET_COUNT;
 }
 
-int AddrInfo::GetNewBucket(const uint256& nKey, const CNetAddr& src, const std::vector<bool>& asmap) const
+int AddrInfoMulti::GetNewBucket(const uint256& nKey, const CNetAddr& src, const std::vector<bool>& asmap) const
 {
     std::vector<unsigned char> vchSourceGroupKey = src.GetGroup(asmap);
     uint64_t hash1 = (CHashWriter(SER_GETHASH, 0) << nKey << GetGroup(asmap) << vchSourceGroupKey).GetCheapHash();
@@ -58,13 +68,13 @@ int AddrInfo::GetNewBucket(const uint256& nKey, const CNetAddr& src, const std::
     return hash2 % ADDRMAN_NEW_BUCKET_COUNT;
 }
 
-int AddrInfo::GetBucketPosition(const uint256& nKey, bool fNew, int nBucket) const
+int AddrInfoMulti::GetBucketPosition(const uint256& nKey, bool fNew, int nBucket) const
 {
     uint64_t hash1 = (CHashWriter(SER_GETHASH, 0) << nKey << (fNew ? uint8_t{'N'} : uint8_t{'K'}) << nBucket << GetKey()).GetCheapHash();
     return hash1 % ADDRMAN_BUCKET_SIZE;
 }
 
-bool AddrInfo::IsTerrible(int64_t nNow) const
+bool AddrInfoMulti::IsTerrible(int64_t nNow) const
 {
     if (nLastTry && nLastTry >= nNow - 60) // never remove things tried in the last minute
         return false;
@@ -84,7 +94,7 @@ bool AddrInfo::IsTerrible(int64_t nNow) const
     return false;
 }
 
-double AddrInfo::GetChance(int64_t nNow) const
+double AddrInfoMulti::GetChance(int64_t nNow) const
 {
     double fChance = 1.0;
     int64_t nSinceLastTry = std::max<int64_t>(nNow - nLastTry, 0);
@@ -251,7 +261,7 @@ void AddrManMultiImpl::Unserialize(Stream& s_)
 
     // Read entries.
     for (int i = 0; i < read_new + read_tried; ++i) {
-        AddrInfo info;
+        AddrInfoMulti info;
         unsigned sources = 1;
         if (format >= Format::V5_MULTIINDEX) {
             s >> static_cast<CAddress&>(info);
@@ -334,7 +344,7 @@ int AddrManMultiImpl::CountAddr(const CService& addr) const
     return std::distance(it, it_end);
 }
 
-void AddrManMultiImpl::UpdateStat(const AddrInfo& info, int inc)
+void AddrManMultiImpl::UpdateStat(const AddrInfoMulti& info, int inc)
 {
     if (info.nRandomPos != -1) {
         if (info.fInTried) {
@@ -355,7 +365,7 @@ void AddrManMultiImpl::EraseInner(AddrManIndex::index<ByAddress>::type::iterator
         auto it_alias = m_index.get<ByAddress>().find(std::make_pair<const CService&, bool>(*it, true));
         if (it_alias != m_index.get<ByAddress>().end()) {
             if (m_tried_collisions.count(&*it_alias)) m_tried_collisions.insert(&*it);
-            Modify(it, [&](AddrInfo& info) { info.source = it_alias->source; });
+            Modify(it, [&](AddrInfoMulti& info) { info.source = it_alias->source; });
             it = it_alias;
         } else {
             // Actually deleting a non-alias entry; remove it from vRandom.
@@ -394,7 +404,7 @@ void AddrManMultiImpl::MakeTried(AddrManIndex::index<ByAddress>::type::iterator 
     AssertLockHeld(cs);
 
     // Extract the entry.
-    AddrInfo info = *it;
+    AddrInfoMulti info = *it;
     assert(!it->fInTried);
     Erase(it);
     // remove the entry from all new buckets
@@ -410,7 +420,7 @@ void AddrManMultiImpl::MakeTried(AddrManIndex::index<ByAddress>::type::iterator 
     auto it_existing = m_index.get<ByBucket>().find(ByBucketExtractor()(info));
     if (it_existing != m_index.get<ByBucket>().end()) {
         // find an item to evict
-        AddrInfo info_evict = *it_existing;
+        AddrInfoMulti info_evict = *it_existing;
 
         // Remove the to-be-evicted item from the tried set.
         Erase(it_existing);
@@ -447,7 +457,7 @@ bool AddrManMultiImpl::AddSingle(const CAddress& addr, const CNetAddr& source, i
         nTimePenalty = 0;
     }
 
-    AddrInfo info(addr, source);
+    AddrInfoMulti info(addr, source);
     info.fInTried = false;
 
     bool alias;
@@ -457,11 +467,11 @@ bool AddrManMultiImpl::AddSingle(const CAddress& addr, const CNetAddr& source, i
         bool fCurrentlyOnline = (GetAdjustedTime() - addr.nTime < 24 * 60 * 60);
         int64_t nUpdateInterval = (fCurrentlyOnline ? 60 * 60 : 24 * 60 * 60);
         if (addr.nTime && (!it->nTime || it->nTime < addr.nTime - nUpdateInterval - nTimePenalty)) {
-            Modify(it, [&](AddrInfo& info) { info.nTime = std::max((int64_t)0, addr.nTime - nTimePenalty); });
+            Modify(it, [&](AddrInfoMulti& info) { info.nTime = std::max((int64_t)0, addr.nTime - nTimePenalty); });
         }
 
         // add services
-        Modify(it, [&](AddrInfo& info) { info.nServices = ServiceFlags(info.nServices | addr.nServices);});
+        Modify(it, [&](AddrInfoMulti& info) { info.nServices = ServiceFlags(info.nServices | addr.nServices);});
 
         // do not update if no new information is present
         if (!addr.nTime || (it->nTime && addr.nTime <= it->nTime))
@@ -497,7 +507,7 @@ bool AddrManMultiImpl::AddSingle(const CAddress& addr, const CNetAddr& source, i
             // Must use the main entry for IsTerrible() (for an up-to-date nTime etc.)
             auto it_canonical = m_index.get<ByAddress>().find(std::pair<const CService&, bool>(*it_existing, false));
             assert(it_canonical != m_index.get<ByAddress>().end());
-            const AddrInfo& infoExisting = *it_canonical;
+            const AddrInfoMulti& infoExisting = *it_canonical;
             if (infoExisting.IsTerrible() || (!alias && CountAddr(infoExisting) > 1)) {
                 // Overwriting the existing new table entry.
                 fInsert = true;
@@ -524,10 +534,10 @@ bool AddrManMultiImpl::Good_(const CService& addr, bool test_before_evict, int64
     // if not found, bail out
     if (it == m_index.get<ByAddress>().end()) return false;
 
-    const AddrInfo& info = *it;
+    const AddrInfoMulti& info = *it;
 
     // update info
-    Modify(it, [&](AddrInfo& info) {
+    Modify(it, [&](AddrInfoMulti& info) {
         info.nLastSuccess = nTime;
         info.nLastTry = nTime;
         info.nAttempts = 0;
@@ -585,7 +595,7 @@ void AddrManMultiImpl::Attempt_(const CService& addr, bool fCountFailure, int64_
 
     // update info
     auto last_good = nLastGood; // avoid the lambda needing cs LOCKed
-    Modify(it, [&](AddrInfo& info) {
+    Modify(it, [&](AddrInfoMulti& info) {
         info.nLastTry = nTime;
         if (fCountFailure && info.nLastCountAttempt < last_good) {
             info.nLastCountAttempt = nTime;
@@ -684,7 +694,7 @@ std::vector<CAddress> AddrManMultiImpl::GetAddr_(size_t max_addresses, size_t ma
         int nRndPos = insecure_rand.randrange(vRandom.size() - n) + n;
         SwapRandom(n, nRndPos);
 
-        const AddrInfo& ai = *vRandom[n];
+        const AddrInfoMulti& ai = *vRandom[n];
 
         // Filter by network (optional)
         if (network != std::nullopt && ai.GetNetClass() != network) continue;
@@ -707,12 +717,12 @@ void AddrManMultiImpl::Connected_(const CService& addr, int64_t nTime)
     // if not found, bail out
     if (it == m_index.get<ByAddress>().end()) return;
 
-    const AddrInfo& info = *it;
+    const AddrInfoMulti& info = *it;
 
     // update info
     int64_t nUpdateInterval = 20 * 60;
     if (nTime - info.nTime > nUpdateInterval) {
-        Modify(it, [&](AddrInfo& info){ info.nTime = nTime; });
+        Modify(it, [&](AddrInfoMulti& info){ info.nTime = nTime; });
     }
 }
 
@@ -726,7 +736,7 @@ void AddrManMultiImpl::SetServices_(const CService& addr, ServiceFlags nServices
     if (it == m_index.get<ByAddress>().end()) return;
 
     // update info
-    Modify(it, [&](AddrInfo& info){ info.nServices = nServices; });
+    Modify(it, [&](AddrInfoMulti& info){ info.nServices = nServices; });
 }
 
 void AddrManMultiImpl::ResolveCollisions_()
@@ -740,7 +750,7 @@ void AddrManMultiImpl::ResolveCollisions_()
         bool erase_collision = false;
 
         {
-            const AddrInfo& info_new = **it;
+            const AddrInfoMulti& info_new = **it;
 
             // Which tried bucket to move the entry to.
             int tried_bucket = info_new.GetTriedBucket(nKey, m_asmap);
@@ -749,7 +759,7 @@ void AddrManMultiImpl::ResolveCollisions_()
             if (it_old != m_index.get<ByBucket>().end()) { // The position in the tried bucket is not empty
 
                 // Get the to-be-evicted address that is being tested
-                const AddrInfo& info_old = *it_old;
+                const AddrInfoMulti& info_old = *it_old;
 
                 // Has successfully connected in last X hours
                 if (GetAdjustedTime() - info_old.nLastSuccess < ADDRMAN_REPLACEMENT_HOURS*(60*60)) {
@@ -796,7 +806,7 @@ std::pair<CAddress, int64_t> AddrManMultiImpl::SelectTriedCollision_()
     std::advance(it, insecure_rand.randrange(m_tried_collisions.size()));
     auto it_new = *it;
 
-    const AddrInfo& newInfo = *it_new;
+    const AddrInfoMulti& newInfo = *it_new;
 
     // which tried bucket to move the entry to
     int tried_bucket = newInfo.GetTriedBucket(nKey, m_asmap);
@@ -808,24 +818,24 @@ std::pair<CAddress, int64_t> AddrManMultiImpl::SelectTriedCollision_()
     return {};
 }
 
-std::optional<AddressPosition> AddrManMultiImpl::FindAddressEntry_(const CAddress& addr)
+std::optional<AddressPositionMulti> AddrManMultiImpl::FindAddressEntry_(const CAddress& addr)
 {
     AssertLockHeld(cs);
 
     auto it = m_index.get<ByAddress>().find(std::pair<const CService&, bool>(addr, false));
     if (it == m_index.get<ByAddress>().end()) return std::nullopt;
 
-    const AddrInfo& addr_info = *it;
+    const AddrInfoMulti& addr_info = *it;
 
     if(addr_info.fInTried) {
         int bucket{addr_info.GetTriedBucket(nKey, m_asmap)};
-        return AddressPosition(/*tried=*/true,
+        return AddressPositionMulti(/*tried=*/true,
                                /*multiplicity=*/1,
                                /*bucket=*/bucket,
                                /*position=*/addr_info.GetBucketPosition(nKey, false, bucket));
     } else {
         int bucket{addr_info.GetNewBucket(nKey, m_asmap)};
-        return AddressPosition(/*tried=*/false,
+        return AddressPositionMulti(/*tried=*/false,
                                /*multiplicity=*/CountAddr(addr_info),
                                /*bucket=*/bucket,
                                /*position=*/addr_info.GetBucketPosition(nKey, true, bucket));
@@ -859,7 +869,7 @@ int AddrManMultiImpl::CheckAddrman() const
     int counted_tried = 0;
 
     for (auto it = m_index.get<ByAddress>().begin(); it != m_index.get<ByAddress>().end(); ++it) {
-        const AddrInfo& info = *it;
+        const AddrInfoMulti& info = *it;
         if (info.nRandomPos == -1) {
             // Tried entries cannot have aliases.
             if (info.fInTried) return -1;
@@ -877,7 +887,7 @@ int AddrManMultiImpl::CheckAddrman() const
             if (it != m_index.get<ByAddress>().begin() && static_cast<const CService&>(info) == *std::prev(it)) return -3;
         }
 
-        AddrInfo copy = info;
+        AddrInfoMulti copy = info;
         copy.Rebucket(nKey, m_asmap);
         if (copy.m_bucket != info.m_bucket || copy.m_bucketpos != info.m_bucketpos) return -5;
     }
@@ -982,7 +992,7 @@ void AddrManMultiImpl::SetServices(const CService& addr, ServiceFlags nServices)
     Check();
 }
 
-std::optional<AddressPosition> AddrManMultiImpl::FindAddressEntry(const CAddress& addr)
+std::optional<AddressPositionMulti> AddrManMultiImpl::FindAddressEntry(const CAddress& addr)
 {
     LOCK(cs);
     Check();
@@ -996,88 +1006,88 @@ const std::vector<bool>& AddrManMultiImpl::GetAsmap() const
     return m_asmap;
 }
 
-AddrMan::AddrMan(std::vector<bool> asmap, bool deterministic, int32_t consistency_check_ratio)
+AddrManMulti::AddrManMulti(std::vector<bool> asmap, bool deterministic, int32_t consistency_check_ratio)
     : m_impl(std::make_unique<AddrManMultiImpl>(std::move(asmap), deterministic, consistency_check_ratio)) {}
 
-AddrMan::~AddrMan() = default;
+AddrManMulti::~AddrManMulti() = default;
 
 template <typename Stream>
-void AddrMan::Serialize(Stream& s_) const
+void AddrManMulti::Serialize(Stream& s_) const
 {
     m_impl->Serialize<Stream>(s_);
 }
 
 template <typename Stream>
-void AddrMan::Unserialize(Stream& s_)
+void AddrManMulti::Unserialize(Stream& s_)
 {
     m_impl->Unserialize<Stream>(s_);
 }
 
 // explicit instantiation
-template void AddrMan::Serialize(CHashWriter& s) const;
-template void AddrMan::Serialize(CAutoFile& s) const;
-template void AddrMan::Serialize(CDataStream& s) const;
-template void AddrMan::Unserialize(CAutoFile& s);
-template void AddrMan::Unserialize(CHashVerifier<CAutoFile>& s);
-template void AddrMan::Unserialize(CDataStream& s);
-template void AddrMan::Unserialize(CHashVerifier<CDataStream>& s);
+template void AddrManMulti::Serialize(CHashWriter& s) const;
+template void AddrManMulti::Serialize(CAutoFile& s) const;
+template void AddrManMulti::Serialize(CDataStream& s) const;
+template void AddrManMulti::Unserialize(CAutoFile& s);
+template void AddrManMulti::Unserialize(CHashVerifier<CAutoFile>& s);
+template void AddrManMulti::Unserialize(CDataStream& s);
+template void AddrManMulti::Unserialize(CHashVerifier<CDataStream>& s);
 
-size_t AddrMan::size() const
+size_t AddrManMulti::size() const
 {
     return m_impl->size();
 }
 
-bool AddrMan::Add(const std::vector<CAddress>& vAddr, const CNetAddr& source, int64_t nTimePenalty)
+bool AddrManMulti::Add(const std::vector<CAddress>& vAddr, const CNetAddr& source, int64_t nTimePenalty)
 {
     return m_impl->Add(vAddr, source, nTimePenalty);
 }
 
-bool AddrMan::Good(const CService& addr, int64_t nTime)
+bool AddrManMulti::Good(const CService& addr, int64_t nTime)
 {
     return m_impl->Good(addr, nTime);
 }
 
-void AddrMan::Attempt(const CService& addr, bool fCountFailure, int64_t nTime)
+void AddrManMulti::Attempt(const CService& addr, bool fCountFailure, int64_t nTime)
 {
     m_impl->Attempt(addr, fCountFailure, nTime);
 }
 
-void AddrMan::ResolveCollisions()
+void AddrManMulti::ResolveCollisions()
 {
     m_impl->ResolveCollisions();
 }
 
-std::pair<CAddress, int64_t> AddrMan::SelectTriedCollision()
+std::pair<CAddress, int64_t> AddrManMulti::SelectTriedCollision()
 {
     return m_impl->SelectTriedCollision();
 }
 
-std::pair<CAddress, int64_t> AddrMan::Select(bool newOnly) const
+std::pair<CAddress, int64_t> AddrManMulti::Select(bool newOnly) const
 {
     return m_impl->Select(newOnly);
 }
 
-std::vector<CAddress> AddrMan::GetAddr(size_t max_addresses, size_t max_pct, std::optional<Network> network) const
+std::vector<CAddress> AddrManMulti::GetAddr(size_t max_addresses, size_t max_pct, std::optional<Network> network) const
 {
     return m_impl->GetAddr(max_addresses, max_pct, network);
 }
 
-void AddrMan::Connected(const CService& addr, int64_t nTime)
+void AddrManMulti::Connected(const CService& addr, int64_t nTime)
 {
     m_impl->Connected(addr, nTime);
 }
 
-void AddrMan::SetServices(const CService& addr, ServiceFlags nServices)
+void AddrManMulti::SetServices(const CService& addr, ServiceFlags nServices)
 {
     m_impl->SetServices(addr, nServices);
 }
 
-std::optional<AddressPosition> AddrMan::FindAddressEntry(const CAddress& addr)
+std::optional<AddressPositionMulti> AddrManMulti::FindAddressEntry(const CAddress& addr)
 {
     return m_impl->FindAddressEntry(addr);
 }
 
-const std::vector<bool>& AddrMan::GetAsmap() const
+const std::vector<bool>& AddrManMulti::GetAsmap() const
 {
     return m_impl->GetAsmap();
 }

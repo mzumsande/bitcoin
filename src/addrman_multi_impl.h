@@ -23,20 +23,10 @@
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 
-/** Total number of buckets for tried addresses */
-static constexpr int32_t ADDRMAN_TRIED_BUCKET_COUNT_LOG2{8};
-static constexpr int ADDRMAN_TRIED_BUCKET_COUNT{1 << ADDRMAN_TRIED_BUCKET_COUNT_LOG2};
-/** Total number of buckets for new addresses */
-static constexpr int32_t ADDRMAN_NEW_BUCKET_COUNT_LOG2{10};
-static constexpr int ADDRMAN_NEW_BUCKET_COUNT{1 << ADDRMAN_NEW_BUCKET_COUNT_LOG2};
-/** Maximum allowed number of entries in buckets for new and tried addresses */
-static constexpr int32_t ADDRMAN_BUCKET_SIZE_LOG2{6};
-static constexpr int ADDRMAN_BUCKET_SIZE{1 << ADDRMAN_BUCKET_SIZE_LOG2};
-
 /**
  * Extended statistics about a CAddress
  */
-class AddrInfo : public CAddress
+class AddrInfoMulti : public CAddress
 {
 public:
     //! last try whatsoever by us (memory only)
@@ -66,7 +56,7 @@ public:
     //! Which position in that bucket this entry occupies.
     int m_bucketpos;
 
-    SERIALIZE_METHODS(AddrInfo, obj)
+    SERIALIZE_METHODS(AddrInfoMulti, obj)
     {
         READWRITEAS(CAddress, obj);
         READWRITE(obj.source, obj.nLastSuccess, obj.nAttempts);
@@ -78,11 +68,11 @@ public:
         m_bucketpos = GetBucketPosition(key, !fInTried, m_bucket);
     }
 
-    AddrInfo(const CAddress &addrIn, const CNetAddr &addrSource) : CAddress(addrIn), source(addrSource)
+    AddrInfoMulti(const CAddress &addrIn, const CNetAddr &addrSource) : CAddress(addrIn), source(addrSource)
     {
     }
 
-    AddrInfo() : CAddress(), source()
+    AddrInfoMulti() : CAddress(), source()
     {
     }
 
@@ -148,12 +138,12 @@ public:
     void SetServices(const CService& addr, ServiceFlags nServices)
         EXCLUSIVE_LOCKS_REQUIRED(!cs);
 
-    std::optional<AddressPosition> FindAddressEntry(const CAddress& addr)
+    std::optional<AddressPositionMulti> FindAddressEntry(const CAddress& addr)
         EXCLUSIVE_LOCKS_REQUIRED(!cs);
 
     const std::vector<bool>& GetAsmap() const;
 
-    friend class AddrManDeterministic;
+    friend class AddrManMultiDeterministic;
 
 private:
     //! A mutex to protect the inner data structures.
@@ -195,7 +185,7 @@ private:
     struct ByAddressExtractor
     {
         using result_type = std::pair<const CService&, bool>;
-        result_type operator()(const AddrInfo& info) const { return {info, info.nRandomPos == -1}; }
+        result_type operator()(const AddrInfoMulti& info) const { return {info, info.nRandomPos == -1}; }
     };
 
     using ByBucketView = std::tuple<bool, int, int>;
@@ -203,11 +193,11 @@ private:
     struct ByBucketExtractor
     {
         using result_type = ByBucketView;
-        result_type operator()(const AddrInfo& info) const { return {info.fInTried, info.m_bucket, info.m_bucketpos}; }
+        result_type operator()(const AddrInfoMulti& info) const { return {info.fInTried, info.m_bucket, info.m_bucketpos}; }
     };
 
     using AddrManIndex = boost::multi_index_container<
-        AddrInfo,
+        AddrInfoMulti,
         boost::multi_index::indexed_by<
             boost::multi_index::ordered_non_unique<boost::multi_index::tag<ByAddress>, ByAddressExtractor>,
             boost::multi_index::ordered_non_unique<boost::multi_index::tag<ByBucket>, ByBucketExtractor>
@@ -230,7 +220,7 @@ private:
     int64_t nLastGood GUARDED_BY(cs){1};
 
     //! Holds addrs inserted into tried table that collide with existing entries. Test-before-evict discipline used to resolve these collisions.
-    std::set<const AddrInfo*> m_tried_collisions;
+    std::set<const AddrInfoMulti*> m_tried_collisions;
 
     /** Perform consistency checks every m_consistency_check_ratio operations (if non-zero). */
     const int32_t m_consistency_check_ratio;
@@ -254,7 +244,7 @@ private:
     //! Count the number of occurrences of entries with this address (including aliases).
     int CountAddr(const CService& addr) const EXCLUSIVE_LOCKS_REQUIRED(cs);
 
-    void UpdateStat(const AddrInfo& info, int inc) EXCLUSIVE_LOCKS_REQUIRED(cs);
+    void UpdateStat(const AddrInfoMulti& info, int inc) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     void EraseInner(AddrManIndex::index<ByAddress>::type::iterator it) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
@@ -265,14 +255,14 @@ private:
     void Modify(Iter it, Fun fun) EXCLUSIVE_LOCKS_REQUIRED(cs)
     {
         UpdateStat(*it, -1);
-        m_index.modify(m_index.project<ByAddress>(it), [&](AddrInfo& info) {
+        m_index.modify(m_index.project<ByAddress>(it), [&](AddrInfoMulti& info) {
             fun(info);
             info.Rebucket(nKey, m_asmap);
         });
         UpdateStat(*it, 1);
     }
 
-    AddrManIndex::index<ByAddress>::type::iterator Insert(AddrInfo info, bool alias) EXCLUSIVE_LOCKS_REQUIRED(cs)
+    AddrManIndex::index<ByAddress>::type::iterator Insert(AddrInfoMulti info, bool alias) EXCLUSIVE_LOCKS_REQUIRED(cs)
     {
         info.Rebucket(nKey, m_asmap);
 
@@ -296,7 +286,7 @@ private:
     bool Good_(const CService &addr, bool test_before_evict, int64_t time) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     /** Attempt to add a single address to addrman's new table.
-     *  @see AddrMan::Add() for parameters. */
+     *  @see AddrManMulti::Add() for parameters. */
     bool AddSingle(const CAddress &addr, const CNetAddr& source, int64_t nTimePenalty) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     bool Add_(const std::vector<CAddress> &vAddr, const CNetAddr& source, int64_t nTimePenalty) EXCLUSIVE_LOCKS_REQUIRED(cs);
@@ -315,7 +305,7 @@ private:
 
     std::pair<CAddress, int64_t> SelectTriedCollision_() EXCLUSIVE_LOCKS_REQUIRED(cs);
 
-    std::optional<AddressPosition> FindAddressEntry_(const CAddress& addr) EXCLUSIVE_LOCKS_REQUIRED(cs);
+    std::optional<AddressPositionMulti> FindAddressEntry_(const CAddress& addr) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     //! Consistency check, taking into account m_consistency_check_ratio.
     //! Will std::abort if an inconsistency is detected.
