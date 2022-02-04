@@ -6,7 +6,6 @@
 #define BITCOIN_ADDRMAN_IMPL_H
 
 #include <logging.h>
-#include <logging/timer.h>
 #include <netaddress.h>
 #include <protocol.h>
 #include <serialize.h>
@@ -20,6 +19,9 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/ordered_index.hpp>
 
 /** Total number of buckets for tried addresses */
 static constexpr int32_t ADDRMAN_TRIED_BUCKET_COUNT_LOG2{8};
@@ -52,19 +54,28 @@ public:
     //! connection attempts since last successful attempt
     int nAttempts{0};
 
-    //! reference count in new sets (memory only)
-    int nRefCount{0};
-
     //! in tried set? (memory only)
     bool fInTried{false};
 
     //! position in vRandom
     mutable int nRandomPos{-1};
 
+    //! Which bucket this entry is in (tried bucket for fInTried, new bucket otherwise).
+    int m_bucket;
+
+    //! Which position in that bucket this entry occupies.
+    int m_bucketpos;
+
     SERIALIZE_METHODS(AddrInfo, obj)
     {
         READWRITEAS(CAddress, obj);
         READWRITE(obj.source, obj.nLastSuccess, obj.nAttempts);
+    }
+
+    void Rebucket(const uint256& key, const std::vector<bool> &asmap)
+    {
+        m_bucket = fInTried ? GetTriedBucket(key, asmap) : GetNewBucket(key, asmap);
+        m_bucketpos = GetBucketPosition(key, !fInTried, m_bucket);
     }
 
     AddrInfo(const CAddress &addrIn, const CNetAddr &addrSource) : CAddress(addrIn), source(addrSource)
@@ -161,6 +172,7 @@ private:
         V2_ASMAP = 2,         //!< for files including asmap version
         V3_BIP155 = 3,        //!< same as V2_ASMAP plus addresses are in BIP155 format
         V4_MULTIPORT = 4,     //!< adds support for multiple ports per IP
+        V5_MULTIINDEX = 5     //!< Redesign, multi_index based
     };
 
     //! The maximum format this software knows it can unserialize. Also, we always serialize
@@ -168,7 +180,7 @@ private:
     //! The format (first byte in the serialized stream) can be higher than this and
     //! still this software may be able to unserialize the file - if the second byte
     //! (see `lowest_compatible` in `Unserialize()`) is less or equal to this.
-    static constexpr Format FILE_FORMAT = Format::V4_MULTIPORT;
+    static constexpr Format FILE_FORMAT = Format::V5_MULTIINDEX;
 
     //! The initial value of a field that is incremented every time an incompatible format
     //! change is made (such that old software versions would not be able to parse and
@@ -177,37 +189,48 @@ private:
     //! @note Don't increment this. Increment `lowest_compatible` in `Serialize()` instead.
     static constexpr uint8_t INCOMPATIBILITY_BASE = 32;
 
-    //! last used nId
-    int nIdCount GUARDED_BY(cs){0};
+    struct ByAddress {};
+    struct ByBucket {};
 
-    //! table with information about all nIds
-    std::unordered_map<int, AddrInfo> mapInfo GUARDED_BY(cs);
+    struct ByAddressExtractor
+    {
+        using result_type = std::pair<const CService&, bool>;
+        result_type operator()(const AddrInfo& info) const { return {info, info.nRandomPos == -1}; }
+    };
 
-    //! find an nId based on its network address and port.
-    std::unordered_map<CService, int, CServiceHash> mapAddr GUARDED_BY(cs);
+    using ByBucketView = std::tuple<bool, int, int>;
 
-    //! randomly-ordered vector of all nIds
-    //! This is mutable because it is unobservable outside the class, so any
-    //! changes to it (even in const methods) are also unobservable.
-    mutable std::vector<int> vRandom GUARDED_BY(cs);
+    struct ByBucketExtractor
+    {
+        using result_type = ByBucketView;
+        result_type operator()(const AddrInfo& info) const { return {info.fInTried, info.m_bucket, info.m_bucketpos}; }
+    };
+
+    using AddrManIndex = boost::multi_index_container<
+        AddrInfo,
+        boost::multi_index::indexed_by<
+            boost::multi_index::ordered_non_unique<boost::multi_index::tag<ByAddress>, ByAddressExtractor>,
+            boost::multi_index::ordered_non_unique<boost::multi_index::tag<ByBucket>, ByBucketExtractor>
+        >
+    >;
+
+    // The actual data table
+    AddrManIndex m_index GUARDED_BY(cs);
+
+    //! randomly-ordered vector of all (non-alias) entries
+    mutable std::vector<AddrManIndex::index<ByAddress>::type::iterator> vRandom GUARDED_BY(cs);
 
     // number of "tried" entries
-    int nTried GUARDED_BY(cs){0};
-
-    //! list of "tried" buckets
-    int vvTried[ADDRMAN_TRIED_BUCKET_COUNT][ADDRMAN_BUCKET_SIZE] GUARDED_BY(cs);
+    int nTried GUARDED_BY(cs) {0};
 
     //! number of (unique) "new" entries
-    int nNew GUARDED_BY(cs){0};
-
-    //! list of "new" buckets
-    int vvNew[ADDRMAN_NEW_BUCKET_COUNT][ADDRMAN_BUCKET_SIZE] GUARDED_BY(cs);
+    int nNew GUARDED_BY(cs) {0};
 
     //! last time Good was called (memory only). Initially set to 1 so that "never" is strictly worse.
     int64_t nLastGood GUARDED_BY(cs){1};
 
     //! Holds addrs inserted into tried table that collide with existing entries. Test-before-evict discipline used to resolve these collisions.
-    std::set<int> m_tried_collisions;
+    std::set<const AddrInfo*> m_tried_collisions;
 
     /** Perform consistency checks every m_consistency_check_ratio operations (if non-zero). */
     const int32_t m_consistency_check_ratio;
@@ -228,37 +251,61 @@ private:
     // would be re-bucketed accordingly.
     const std::vector<bool> m_asmap;
 
-    //! Find an entry.
-    AddrInfo* Find(const CService& addr, int* pnId = nullptr) EXCLUSIVE_LOCKS_REQUIRED(cs);
+    //! Count the number of occurrences of entries with this address (including aliases).
+    int CountAddr(const CService& addr) const EXCLUSIVE_LOCKS_REQUIRED(cs);
 
-    //! Create a new entry and add it to the internal data structures mapInfo, mapAddr and vRandom.
-    AddrInfo* Create(const CAddress& addr, const CNetAddr& addrSource, int* pnId = nullptr) EXCLUSIVE_LOCKS_REQUIRED(cs);
+    void UpdateStat(const AddrInfo& info, int inc) EXCLUSIVE_LOCKS_REQUIRED(cs);
+
+    void EraseInner(AddrManIndex::index<ByAddress>::type::iterator it) EXCLUSIVE_LOCKS_REQUIRED(cs);
+
+    template<typename It>
+    void Erase(It it) EXCLUSIVE_LOCKS_REQUIRED(cs) { EraseInner(m_index.project<ByAddress>(it)); }
+
+    template<typename Iter, typename Fun>
+    void Modify(Iter it, Fun fun) EXCLUSIVE_LOCKS_REQUIRED(cs)
+    {
+        UpdateStat(*it, -1);
+        m_index.modify(m_index.project<ByAddress>(it), [&](AddrInfo& info) {
+            fun(info);
+            info.Rebucket(nKey, m_asmap);
+        });
+        UpdateStat(*it, 1);
+    }
+
+    AddrManIndex::index<ByAddress>::type::iterator Insert(AddrInfo info, bool alias) EXCLUSIVE_LOCKS_REQUIRED(cs)
+    {
+        info.Rebucket(nKey, m_asmap);
+
+        if (alias) {
+            info.nRandomPos = -1;
+        } else {
+            info.nRandomPos = vRandom.size();
+        }
+        UpdateStat(info, 1);
+        auto it = m_index.insert(std::move(info)).first;
+        if (!alias) vRandom.push_back(it);
+        return it;
+    }
 
     //! Swap two elements in vRandom.
     void SwapRandom(unsigned int nRandomPos1, unsigned int nRandomPos2) const EXCLUSIVE_LOCKS_REQUIRED(cs);
 
-    //! Delete an entry. It must not be in tried, and have refcount 0.
-    void Delete(int nId) EXCLUSIVE_LOCKS_REQUIRED(cs);
-
-    //! Clear a position in a "new" table. This is the only place where entries are actually deleted.
-    void ClearNew(int nUBucket, int nUBucketPos) EXCLUSIVE_LOCKS_REQUIRED(cs);
-
     //! Move an entry from the "new" table(s) to the "tried" table
-    void MakeTried(AddrInfo& info, int nId) EXCLUSIVE_LOCKS_REQUIRED(cs);
+    void MakeTried(AddrManIndex::index<ByAddress>::type::iterator it) EXCLUSIVE_LOCKS_REQUIRED(cs);
+
+    bool Good_(const CService &addr, bool test_before_evict, int64_t time) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     /** Attempt to add a single address to addrman's new table.
      *  @see AddrMan::Add() for parameters. */
-    bool AddSingle(const CAddress& addr, const CNetAddr& source, int64_t nTimePenalty) EXCLUSIVE_LOCKS_REQUIRED(cs);
-
-    bool Good_(const CService& addr, bool test_before_evict, int64_t time) EXCLUSIVE_LOCKS_REQUIRED(cs);
+    bool AddSingle(const CAddress &addr, const CNetAddr& source, int64_t nTimePenalty) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     bool Add_(const std::vector<CAddress> &vAddr, const CNetAddr& source, int64_t nTimePenalty) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
-    void Attempt_(const CService& addr, bool fCountFailure, int64_t nTime) EXCLUSIVE_LOCKS_REQUIRED(cs);
-
-    std::pair<CAddress, int64_t> Select_(bool newOnly) const EXCLUSIVE_LOCKS_REQUIRED(cs);
+    void Attempt_(const CService &addr, bool fCountFailure, int64_t nTime) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     std::vector<CAddress> GetAddr_(size_t max_addresses, size_t max_pct, std::optional<Network> network) const EXCLUSIVE_LOCKS_REQUIRED(cs);
+
+    std::pair<CAddress, int64_t> Select_(bool newOnly) const EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     void Connected_(const CService& addr, int64_t nTime) EXCLUSIVE_LOCKS_REQUIRED(cs);
 

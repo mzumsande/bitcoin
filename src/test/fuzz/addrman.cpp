@@ -11,10 +11,8 @@
 #include <test/fuzz/FuzzedDataProvider.h>
 #include <test/fuzz/fuzz.h>
 #include <test/fuzz/util.h>
-#include <test/util/setup_common.h>
 #include <time.h>
 #include <util/asmap.h>
-#include <util/system.h>
 
 #include <cassert>
 #include <cstdint>
@@ -22,26 +20,19 @@
 #include <string>
 #include <vector>
 
-namespace {
-const BasicTestingSetup* g_setup;
-
-int32_t GetCheckRatio()
-{
-    return std::clamp<int32_t>(g_setup->m_node.args->GetIntArg("-checkaddrman", 0), 0, 1000000);
-}
-} // namespace
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/ordered_index.hpp>
 
 void initialize_addrman()
 {
-    static const auto testing_setup = MakeNoLogFileContext<>(CBaseChainParams::REGTEST);
-    g_setup = testing_setup.get();
+    SelectParams(CBaseChainParams::REGTEST);
 }
 
 FUZZ_TARGET_INIT(data_stream_addr_man, initialize_addrman)
 {
     FuzzedDataProvider fuzzed_data_provider{buffer.data(), buffer.size()};
     CDataStream data_stream = ConsumeDataStream(fuzzed_data_provider);
-    AddrMan addr_man{/*asmap=*/std::vector<bool>(), /*deterministic=*/false, GetCheckRatio()};
+    AddrMan addr_man(/*asmap=*/std::vector<bool>(), /*deterministic=*/false, /*consistency_check_ratio=*/0);
     try {
         ReadFromStream(addr_man, data_stream);
     } catch (const std::exception&) {
@@ -125,7 +116,7 @@ class AddrManDeterministic : public AddrMan
 {
 public:
     explicit AddrManDeterministic(std::vector<bool> asmap, FuzzedDataProvider& fuzzed_data_provider)
-        : AddrMan{std::move(asmap), /*deterministic=*/true, GetCheckRatio()}
+        : AddrMan(std::move(asmap), /*deterministic=*/true, /*consistency_check_ratio=*/0)
     {
         WITH_LOCK(m_impl->cs, m_impl->insecure_rand = FastRandomContext{ConsumeUInt256(fuzzed_data_provider)});
     }
@@ -139,86 +130,31 @@ public:
      */
     bool operator==(const AddrManDeterministic& other)
     {
+        if (m_impl->size() != other.m_impl->size() ) {
+            return false;
+        }
+
         LOCK2(m_impl->cs, other.m_impl->cs);
 
-        if (m_impl->mapInfo.size() != other.m_impl->mapInfo.size() || m_impl->nNew != other.m_impl->nNew ||
+        if (m_impl->nNew != other.m_impl->nNew ||
             m_impl->nTried != other.m_impl->nTried) {
             return false;
         }
 
-        // Check that all values in `mapInfo` are equal to all values in `other.mapInfo`.
-        // Keys may be different.
+         auto addrinfo_eq = [](const AddrInfo& lhs, const AddrInfo& rhs) {
+         return std::tie(static_cast<const CService&>(lhs), lhs.source, lhs.nLastSuccess, lhs.nAttempts, lhs.nLastTry, lhs.m_bucket, lhs.m_bucketpos, lhs.fInTried) ==
+                std::tie(static_cast<const CService&>(rhs), rhs.source, rhs.nLastSuccess, rhs.nAttempts, rhs.nLastTry, rhs.m_bucket, rhs.m_bucketpos, rhs.fInTried);
+         };
 
-        auto addrinfo_hasher = [](const AddrInfo& a) {
-            CSipHasher hasher(0, 0);
-            auto addr_key = a.GetKey();
-            auto source_key = a.source.GetAddrBytes();
-            hasher.Write(a.nLastSuccess);
-            hasher.Write(a.nAttempts);
-            hasher.Write(a.nRefCount);
-            hasher.Write(a.fInTried);
-            hasher.Write(a.GetNetwork());
-            hasher.Write(a.source.GetNetwork());
-            hasher.Write(addr_key.size());
-            hasher.Write(source_key.size());
-            hasher.Write(addr_key.data(), addr_key.size());
-            hasher.Write(source_key.data(), source_key.size());
-            return (size_t)hasher.Finalize();
-        };
+        // Check that all values in the index are equal
+        auto it1 = m_impl->m_index.get<AddrManImpl::ByAddress>().begin();
+        auto it2 = other.m_impl->m_index.get<AddrManImpl::ByAddress>().begin();
+        while (it1 != m_impl->m_index.get<AddrManImpl::ByAddress>().end() && it2 != other.m_impl->m_index.get<AddrManImpl::ByAddress>().end()) {
+            assert(addrinfo_eq(*it1, *it2));
+            it1++;
+            it2++;
 
-        auto addrinfo_eq = [](const AddrInfo& lhs, const AddrInfo& rhs) {
-            return std::tie(static_cast<const CService&>(lhs), lhs.source, lhs.nLastSuccess, lhs.nAttempts, lhs.nRefCount, lhs.fInTried) ==
-                   std::tie(static_cast<const CService&>(rhs), rhs.source, rhs.nLastSuccess, rhs.nAttempts, rhs.nRefCount, rhs.fInTried);
-        };
-
-        using Addresses = std::unordered_set<AddrInfo, decltype(addrinfo_hasher), decltype(addrinfo_eq)>;
-
-        const size_t num_addresses{m_impl->mapInfo.size()};
-
-        Addresses addresses{num_addresses, addrinfo_hasher, addrinfo_eq};
-        for (const auto& [id, addr] : m_impl->mapInfo) {
-            addresses.insert(addr);
         }
-
-        Addresses other_addresses{num_addresses, addrinfo_hasher, addrinfo_eq};
-        for (const auto& [id, addr] : other.m_impl->mapInfo) {
-            other_addresses.insert(addr);
-        }
-
-        if (addresses != other_addresses) {
-            return false;
-        }
-
-        auto IdsReferToSameAddress = [&](int id, int other_id) EXCLUSIVE_LOCKS_REQUIRED(m_impl->cs, other.m_impl->cs) {
-            if (id == -1 && other_id == -1) {
-                return true;
-            }
-            if ((id == -1 && other_id != -1) || (id != -1 && other_id == -1)) {
-                return false;
-            }
-            return m_impl->mapInfo.at(id) == other.m_impl->mapInfo.at(other_id);
-        };
-
-        // Check that `vvNew` contains the same addresses as `other.vvNew`. Notice - `vvNew[i][j]`
-        // contains just an id and the address is to be found in `mapInfo.at(id)`. The ids
-        // themselves may differ between `vvNew` and `other.vvNew`.
-        for (size_t i = 0; i < ADDRMAN_NEW_BUCKET_COUNT; ++i) {
-            for (size_t j = 0; j < ADDRMAN_BUCKET_SIZE; ++j) {
-                if (!IdsReferToSameAddress(m_impl->vvNew[i][j], other.m_impl->vvNew[i][j])) {
-                    return false;
-                }
-            }
-        }
-
-        // Same for `vvTried`.
-        for (size_t i = 0; i < ADDRMAN_TRIED_BUCKET_COUNT; ++i) {
-            for (size_t j = 0; j < ADDRMAN_BUCKET_SIZE; ++j) {
-                if (!IdsReferToSameAddress(m_impl->vvTried[i][j], other.m_impl->vvTried[i][j])) {
-                    return false;
-                }
-            }
-        }
-
         return true;
     }
 };
