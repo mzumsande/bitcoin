@@ -80,6 +80,9 @@ from test_framework.util import (
     p2p_port,
     wait_until_helper_internal,
 )
+from test_framework.v2_p2p import (
+    EncryptedP2PState,
+)
 
 logger = logging.getLogger("TestFramework.p2p")
 
@@ -159,6 +162,9 @@ class P2PConnection(asyncio.Protocol):
         # The underlying transport of the connection.
         # Should only call methods on this from the NetworkThread, c.f. call_soon_threadsafe
         self._transport = None
+        self.v2_state = None  # EncryptedP2PState object needed for v2 p2p connections
+        self.supports_v2_p2p = False  # set if the connection supports v2 p2p
+        self.queue_messages = []  # queue messages to send after initial v2 handshake
 
     @property
     def is_connected(self):
@@ -174,16 +180,22 @@ class P2PConnection(asyncio.Protocol):
         self.recvbuf = b""
         self.magic_bytes = MAGIC_BYTES[net]
 
-    def peer_connect(self, dstaddr, dstport, *, net, timeout_factor):
+    def peer_connect(self, dstaddr, dstport, *, net, timeout_factor, supports_v2_p2p=False):
         self.peer_connect_helper(dstaddr, dstport, net, timeout_factor)
+        if supports_v2_p2p:
+            self.supports_v2_p2p = True
+            self.v2_state = EncryptedP2PState(initiating=True, net=net)
 
         loop = NetworkThread.network_event_loop
         logger.debug('Connecting to Bitcoin Node: %s:%d' % (self.dstaddr, self.dstport))
         coroutine = loop.create_connection(lambda: self, host=self.dstaddr, port=self.dstport)
         return lambda: loop.call_soon_threadsafe(loop.create_task, coroutine)
 
-    def peer_accept_connection(self, connect_id, connect_cb=lambda: None, *, net, timeout_factor):
+    def peer_accept_connection(self, connect_id, connect_cb=lambda: None, *, net, timeout_factor, supports_v2_p2p=False):
         self.peer_connect_helper('0', 0, net, timeout_factor)
+        if supports_v2_p2p:
+            self.supports_v2_p2p = True
+            self.v2_state = EncryptedP2PState(initiating=False, net=net)
 
         logger.debug('Listening for Bitcoin Node with id: {}'.format(connect_id))
         return lambda: NetworkThread.listen(self, connect_cb, idx=connect_id)
@@ -199,8 +211,13 @@ class P2PConnection(asyncio.Protocol):
         assert not self._transport
         logger.debug("Connected & Listening: %s:%d" % (self.dstaddr, self.dstport))
         self._transport = transport
+        # in an inbound connection to the TestNode, P2PConnection is the initiator. [TestNode <---- P2PConnection]
+        # ellswift is generated and sent immediately to begin the initial v2 handshake.
+        if self.supports_v2_p2p and self.v2_state.initiating and not self.v2_state.tried_v2_handshake:
+            ellswift_and_garbage_data = self.v2_state.initiate_v2_handshake()
+            self.send_raw_message(ellswift_and_garbage_data)
         if self.on_connection_send_msg:
-            self.send_message(self.on_connection_send_msg)
+            self.queue_messages.append(self.on_connection_send_msg) if self.supports_v2_p2p else self.send_message(self.on_connection_send_msg)
             self.on_connection_send_msg = None  # Never used again
         self.on_open()
 

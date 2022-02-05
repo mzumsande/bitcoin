@@ -93,6 +93,7 @@ class TestNode():
         # For those callers that need more flexibility, they can just set the args property directly.
         # Note that common args are set in the config file (see initialize_datadir)
         self.extra_args = extra_args
+        self.advertise_v2_p2p = False
         self.version = version
         # Configuration for logging is set as command-line args rather than in the bitcoin.conf file.
         # This means that starting a bitcoind using the temp dir to debug a failed test won't
@@ -197,6 +198,10 @@ class TestNode():
         """Start the node."""
         if extra_args is None:
             extra_args = self.extra_args
+        if "-v2transport=1" in extra_args:
+            self.advertise_v2_p2p = True
+        else:
+            self.advertise_v2_p2p = False
 
         # Add a new stdout and stderr file each time bitcoind is started
         if stderr is None:
