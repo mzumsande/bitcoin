@@ -249,6 +249,8 @@ void AddrManMultiImpl::Unserialize(Stream& s_)
         }
     }
 
+    int nLostTried{0};
+    int nLostNew{0};
     // Read entries.
     for (int i = 0; i < read_new + read_tried; ++i) {
         AddrInfo info;
@@ -277,6 +279,7 @@ void AddrManMultiImpl::Unserialize(Stream& s_)
             // If another entry in the same bucket/position already exists, delete it.
             auto it_bucket = m_index.get<ByBucket>().find(ByBucketExtractor()(info));
             if (it_bucket != m_index.get<ByBucket>().end()) {
+                it_bucket->fInTried ? ++nLostTried : ++nLostNew;
                 Erase(it_bucket);
             }
             // If we're adding an entry with the same address as one that exists:
@@ -289,11 +292,17 @@ void AddrManMultiImpl::Unserialize(Stream& s_)
             if (it_addr != m_index.get<ByAddress>().end() && static_cast<const CService&>(*it_addr) == info) {
                 if (info.fInTried) {
                     do {
+                        ++nLostTried;
                         Erase(it_addr);
                         it_addr = m_index.get<ByAddress>().lower_bound(std::pair<const CService&, bool>(info, false));
                     } while (it_addr != m_index.get<ByAddress>().end() && static_cast<const CService&>(*it_addr) == info);
                 } else {
                     alias = true;
+                    //fields that are only used in main entry
+                    info.nLastTry = 0;
+                    info.nLastCountAttempt = 0;
+                    info.nLastSuccess = 0;
+                    info.nAttempts = 0;
                 }
             }
             // Insert the read entry into the table.
@@ -301,7 +310,7 @@ void AddrManMultiImpl::Unserialize(Stream& s_)
         }
     }
 
-    // Bucket information and asmap checksum are ignored as of V4.
+    // Bucket information and asmap checksum are ignored as of V5.
     if (format < Format::V5_MULTIINDEX) {
         for (int bucket = 0; bucket < nUBuckets; ++bucket) {
             int num_entries{0};
