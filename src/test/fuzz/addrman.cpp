@@ -133,7 +133,6 @@ public:
         if (m_impl->size() != other.m_impl->size() ) {
             return false;
         }
-
         LOCK2(m_impl->cs, other.m_impl->cs);
 
         if (m_impl->nNew != other.m_impl->nNew ||
@@ -150,7 +149,9 @@ public:
         auto it1 = m_impl->m_index.get<AddrManImpl::ByAddress>().begin();
         auto it2 = other.m_impl->m_index.get<AddrManImpl::ByAddress>().begin();
         while (it1 != m_impl->m_index.get<AddrManImpl::ByAddress>().end() && it2 != other.m_impl->m_index.get<AddrManImpl::ByAddress>().end()) {
-            assert(addrinfo_eq(*it1, *it2));
+            if(!addrinfo_eq(*it1, *it2)) {
+                return false;
+            };
             it1++;
             it2++;
 
