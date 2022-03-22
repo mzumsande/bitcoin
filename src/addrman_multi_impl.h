@@ -23,20 +23,10 @@
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 
-/** Total number of buckets for tried addresses */
-static constexpr int32_t ADDRMAN_TRIED_BUCKET_COUNT_LOG2{8};
-static constexpr int ADDRMAN_TRIED_BUCKET_COUNT{1 << ADDRMAN_TRIED_BUCKET_COUNT_LOG2};
-/** Total number of buckets for new addresses */
-static constexpr int32_t ADDRMAN_NEW_BUCKET_COUNT_LOG2{10};
-static constexpr int ADDRMAN_NEW_BUCKET_COUNT{1 << ADDRMAN_NEW_BUCKET_COUNT_LOG2};
-/** Maximum allowed number of entries in buckets for new and tried addresses */
-static constexpr int32_t ADDRMAN_BUCKET_SIZE_LOG2{6};
-static constexpr int ADDRMAN_BUCKET_SIZE{1 << ADDRMAN_BUCKET_SIZE_LOG2};
-
 /**
  * Extended statistics about a CAddress
  */
-class AddrInfo : public CService
+class AddrInfoMulti : public CService
 {
 public:
     //! where knowledge about this address first came from
@@ -60,11 +50,11 @@ public:
         m_bucketpos = GetBucketPosition(key, !fInTried, m_bucket);
     }
 
-    AddrInfo(const CService &addrIn, const CNetAddr &addrSource) : CService(addrIn), source(addrSource)
+    AddrInfoMulti(const CService &addrIn, const CNetAddr &addrSource) : CService(addrIn), source(addrSource)
     {
     }
 
-    AddrInfo() : CService(), source()
+    AddrInfoMulti() : CService(), source()
     {
     }
 
@@ -84,12 +74,12 @@ public:
     int GetBucketPosition(const uint256 &nKey, bool fNew, int nBucket) const;
 };
 
-class AddrManImpl
+class AddrManMultiImpl
 {
 public:
-    AddrManImpl(std::vector<bool>&& asmap, bool deterministic, int32_t consistency_check_ratio);
+    AddrManMultiImpl(std::vector<bool>&& asmap, bool deterministic, int32_t consistency_check_ratio);
 
-    ~AddrManImpl();
+    ~AddrManMultiImpl();
 
     template <typename Stream>
     void Serialize(Stream& s_) const EXCLUSIVE_LOCKS_REQUIRED(!cs);
@@ -124,12 +114,12 @@ public:
     void SetServices(const CService& addr, ServiceFlags nServices)
         EXCLUSIVE_LOCKS_REQUIRED(!cs);
 
-    std::optional<AddressPosition> FindAddressEntry(const CAddress& addr)
+    std::optional<AddressPositionMulti> FindAddressEntry(const CAddress& addr)
         EXCLUSIVE_LOCKS_REQUIRED(!cs);
 
     const std::vector<bool>& GetAsmap() const;
 
-    friend class AddrManDeterministic;
+    friend class AddrManMultiDeterministic;
 
 private:
     //! A mutex to protect the inner data structures.
@@ -171,7 +161,7 @@ private:
     struct ByAddressExtractor
     {
         using result_type = std::pair<const CService&, bool>;
-        result_type operator()(const AddrInfo& info) const { return {info, info.nRandomPos == -1}; }
+        result_type operator()(const AddrInfoMulti& info) const { return {info, info.nRandomPos == -1}; }
     };
 
     using ByBucketView = std::tuple<bool, int, int>;
@@ -179,11 +169,11 @@ private:
     struct ByBucketExtractor
     {
         using result_type = ByBucketView;
-        result_type operator()(const AddrInfo& info) const { return {info.fInTried, info.m_bucket, info.m_bucketpos}; }
+        result_type operator()(const AddrInfoMulti& info) const { return {info.fInTried, info.m_bucket, info.m_bucketpos}; }
     };
 
-    using AddrManIndex = boost::multi_index_container<
-        AddrInfo,
+    using AddrManMultiIndex = boost::multi_index_container<
+        AddrInfoMulti,
         boost::multi_index::indexed_by<
             boost::multi_index::ordered_non_unique<boost::multi_index::tag<ByAddress>, ByAddressExtractor>,
             boost::multi_index::ordered_non_unique<boost::multi_index::tag<ByBucket>, ByBucketExtractor>
@@ -196,7 +186,7 @@ private:
     */
     struct AddrStatistics {
 
-        AddrManIndex::index<ByAddress>::type::iterator addr{nullptr};
+        AddrManMultiIndex::index<ByAddress>::type::iterator addr{nullptr};
 
         //! last try whatsoever by us (memory only)
         int64_t nLastTry{0};
@@ -217,11 +207,11 @@ private:
         ServiceFlags nServices{NODE_NONE};
 
         AddrStatistics() {};
-        AddrStatistics(AddrManIndex::index<ByAddress>::type::iterator addr_in) : addr(addr_in) {};
+        AddrStatistics(AddrManMultiIndex::index<ByAddress>::type::iterator addr_in) : addr(addr_in) {};
     };
 
     // The actual data table
-    AddrManIndex m_index GUARDED_BY(cs);
+    AddrManMultiIndex m_index GUARDED_BY(cs);
 
     //! randomly-ordered vector of all (non-alias) entries
     mutable std::vector<AddrStatistics> vAddrStatistics GUARDED_BY(cs);
@@ -236,7 +226,7 @@ private:
     int64_t nLastGood GUARDED_BY(cs){1};
 
     //! Holds addrs inserted into tried table that collide with existing entries. Test-before-evict discipline used to resolve these collisions.
-    std::set<const AddrInfo*> m_tried_collisions;
+    std::set<const AddrInfoMulti*> m_tried_collisions;
 
     /** Perform consistency checks every m_consistency_check_ratio operations (if non-zero). */
     const int32_t m_consistency_check_ratio;
@@ -260,9 +250,9 @@ private:
     //! Count the number of occurrences of entries with this address (including aliases).
     int CountAddr(const CService& addr) const EXCLUSIVE_LOCKS_REQUIRED(cs);
 
-    void UpdateStat(const AddrInfo& info, int inc) EXCLUSIVE_LOCKS_REQUIRED(cs);
+    void UpdateStat(const AddrInfoMulti& info, int inc) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
-    void EraseInner(AddrManIndex::index<ByAddress>::type::iterator it) EXCLUSIVE_LOCKS_REQUIRED(cs);
+    void EraseInner(AddrManMultiIndex::index<ByAddress>::type::iterator it) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     //! Determine whether the statistics about an entry are bad enough so that it can just be deleted
     bool IsTerrible(const AddrStatistics& stat, int64_t nNow = GetAdjustedTime()) const;
@@ -270,7 +260,7 @@ private:
     //! Calculate the relative chance this entry should be given when selecting nodes to connect to
     double GetChance(const AddrStatistics& stat, int64_t nNow = GetAdjustedTime()) const;
 
-    CAddress MakeAddress(const AddrInfo &addrInfo) const;
+    CAddress MakeAddress(const AddrInfoMulti &addrInfo) const;
 
     template<typename It>
     void Erase(It it) EXCLUSIVE_LOCKS_REQUIRED(cs) { EraseInner(m_index.project<ByAddress>(it)); }
@@ -279,14 +269,14 @@ private:
     void Modify(Iter it, Fun fun) EXCLUSIVE_LOCKS_REQUIRED(cs)
     {
         UpdateStat(*it, -1);
-        m_index.modify(m_index.project<ByAddress>(it), [&](AddrInfo& info) {
+        m_index.modify(m_index.project<ByAddress>(it), [&](AddrInfoMulti& info) {
             fun(info);
             info.Rebucket(nKey, m_asmap);
         });
         UpdateStat(*it, 1);
     }
 
-    AddrManIndex::index<ByAddress>::type::iterator Insert(AddrInfo info, AddrStatistics stats, bool alias) EXCLUSIVE_LOCKS_REQUIRED(cs)
+    AddrManMultiIndex::index<ByAddress>::type::iterator Insert(AddrInfoMulti info, AddrStatistics stats, bool alias) EXCLUSIVE_LOCKS_REQUIRED(cs)
     {
         info.Rebucket(nKey, m_asmap);
 
@@ -306,12 +296,12 @@ private:
     void SwapRandom(unsigned int nRandomPos1, unsigned int nRandomPos2) const EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     //! Move an entry from the "new" table(s) to the "tried" table
-    void MakeTried(AddrManIndex::index<ByAddress>::type::iterator it) EXCLUSIVE_LOCKS_REQUIRED(cs);
+    void MakeTried(AddrManMultiIndex::index<ByAddress>::type::iterator it) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     bool Good_(const CService &addr, bool test_before_evict, int64_t time) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     /** Attempt to add a single address to addrman's new table.
-     *  @see AddrMan::Add() for parameters. */
+     *  @see AddrManMulti::Add() for parameters. */
     bool AddSingle(const CAddress &addr, const CNetAddr& source, int64_t nTimePenalty) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     bool Add_(const std::vector<CAddress> &vAddr, const CNetAddr& source, int64_t nTimePenalty) EXCLUSIVE_LOCKS_REQUIRED(cs);
@@ -330,7 +320,7 @@ private:
 
     std::pair<CAddress, int64_t> SelectTriedCollision_() EXCLUSIVE_LOCKS_REQUIRED(cs);
 
-    std::optional<AddressPosition> FindAddressEntry_(const CAddress& addr) EXCLUSIVE_LOCKS_REQUIRED(cs);
+    std::optional<AddressPositionMulti> FindAddressEntry_(const CAddress& addr) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     //! Consistency check, taking into account m_consistency_check_ratio.
     //! Will std::abort if an inconsistency is detected.
