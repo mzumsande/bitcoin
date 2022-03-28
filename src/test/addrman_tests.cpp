@@ -928,8 +928,10 @@ static CDataStream MakeCorruptPeersDat()
     CAddress addr = CAddress(serv, NODE_NONE);
     CNetAddr resolved;
     BOOST_CHECK(LookupHost("252.2.2.2", resolved, false));
-    AddrInfo info = AddrInfo(addr, resolved);
-    s << info;
+    s << addr;
+    s << resolved;
+    s << int64_t{0};//nLastSuccess
+    s << int{0};//nAttempts
 
     return s;
 }
