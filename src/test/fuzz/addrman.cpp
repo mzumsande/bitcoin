@@ -139,94 +139,53 @@ public:
     }
 
     /**
-     * Compare with another AddrMan.
-     * This compares:
-     * - the values in `mapInfo` (the keys aka ids are ignored)
-     * - vvNew entries refer to the same addresses
-     * - vvTried entries refer to the same addresses
-     */
-    bool operator==(const AddrManDeterministic& other) const
+      * Compare with another AddrMan.
+      * This compares:
+      * - the AddrInfo objects in the addrman multi-index
+      * - the corresponding AddrStatistics objects
+      */
+    bool operator==(const AddrManDeterministic& other)
     {
+        if (m_impl->size() != other.m_impl->size()) {
+            return false;
+        }
         LOCK2(m_impl->cs, other.m_impl->cs);
 
-        if (m_impl->mapInfo.size() != other.m_impl->mapInfo.size() || m_impl->nNew != other.m_impl->nNew ||
+        if (m_impl->nNew != other.m_impl->nNew ||
             m_impl->nTried != other.m_impl->nTried) {
             return false;
         }
 
-        // Check that all values in `mapInfo` are equal to all values in `other.mapInfo`.
-        // Keys may be different.
-
-        auto addrinfo_hasher = [](const AddrInfo& a) {
-            CSipHasher hasher(0, 0);
-            auto addr_key = a.GetKey();
-            auto source_key = a.source.GetAddrBytes();
-            hasher.Write(a.nLastSuccess);
-            hasher.Write(a.nAttempts);
-            hasher.Write(a.nRefCount);
-            hasher.Write(a.fInTried);
-            hasher.Write(a.GetNetwork());
-            hasher.Write(a.source.GetNetwork());
-            hasher.Write(addr_key.size());
-            hasher.Write(source_key.size());
-            hasher.Write(addr_key.data(), addr_key.size());
-            hasher.Write(source_key.data(), source_key.size());
-            return (size_t)hasher.Finalize();
-        };
-
         auto addrinfo_eq = [](const AddrInfo& lhs, const AddrInfo& rhs) {
-            return std::tie(static_cast<const CService&>(lhs), lhs.source, lhs.nLastSuccess, lhs.nAttempts, lhs.nRefCount, lhs.fInTried) ==
-                   std::tie(static_cast<const CService&>(rhs), rhs.source, rhs.nLastSuccess, rhs.nAttempts, rhs.nRefCount, rhs.fInTried);
+            return std::tie(static_cast<const CService&>(lhs), lhs.source, lhs.m_bucket, lhs.m_bucketpos, lhs.fInTried) ==
+                   std::tie(static_cast<const CService&>(rhs), rhs.source, rhs.m_bucket, rhs.m_bucketpos, rhs.fInTried);
         };
 
-        using Addresses = std::unordered_set<AddrInfo, decltype(addrinfo_hasher), decltype(addrinfo_eq)>;
+        auto addrstats_eq = [](const AddrManImpl::AddrStatistics& lhs, const AddrManImpl::AddrStatistics& rhs) {
+            return std::tie(lhs.nLastTry, lhs.nLastCountAttempt, lhs.nLastSuccess, lhs.nAttempts, lhs.nTime, lhs.nServices) ==
+                   std::tie(rhs.nLastTry, rhs.nLastCountAttempt, rhs.nLastSuccess, rhs.nAttempts, rhs.nTime, rhs.nServices);
+        };
 
-        const size_t num_addresses{m_impl->mapInfo.size()};
-
-        Addresses addresses{num_addresses, addrinfo_hasher, addrinfo_eq};
-        for (const auto& [id, addr] : m_impl->mapInfo) {
-            addresses.insert(addr);
-        }
-
-        Addresses other_addresses{num_addresses, addrinfo_hasher, addrinfo_eq};
-        for (const auto& [id, addr] : other.m_impl->mapInfo) {
-            other_addresses.insert(addr);
-        }
-
-        if (addresses != other_addresses) {
-            return false;
-        }
-
-        auto IdsReferToSameAddress = [&](int id, int other_id) EXCLUSIVE_LOCKS_REQUIRED(m_impl->cs, other.m_impl->cs) {
-            if (id == -1 && other_id == -1) {
-                return true;
-            }
-            if ((id == -1 && other_id != -1) || (id != -1 && other_id == -1)) {
+        // Check that all values in the index are equal
+        auto it1 = m_impl->m_index.get<AddrManImpl::ByAddress>().begin();
+        auto it2 = other.m_impl->m_index.get<AddrManImpl::ByAddress>().begin();
+        while (it1 != m_impl->m_index.get<AddrManImpl::ByAddress>().end() && it2 != other.m_impl->m_index.get<AddrManImpl::ByAddress>().end()) {
+            if (!addrinfo_eq(*it1, *it2)) {
                 return false;
-            }
-            return m_impl->mapInfo.at(id) == other.m_impl->mapInfo.at(other_id);
-        };
-
-        // Check that `vvNew` contains the same addresses as `other.vvNew`. Notice - `vvNew[i][j]`
-        // contains just an id and the address is to be found in `mapInfo.at(id)`. The ids
-        // themselves may differ between `vvNew` and `other.vvNew`.
-        for (size_t i = 0; i < ADDRMAN_NEW_BUCKET_COUNT; ++i) {
-            for (size_t j = 0; j < ADDRMAN_BUCKET_SIZE; ++j) {
-                if (!IdsReferToSameAddress(m_impl->vvNew[i][j], other.m_impl->vvNew[i][j])) {
+            };
+            // aliases
+            if (it1->m_pos_addrstats == -1 || it2->m_pos_addrstats == -1) {
+                if (it2->m_pos_addrstats != it2->m_pos_addrstats) {
                     return false;
                 }
             }
+            // non-aliases
+            else if (!addrstats_eq(m_impl->m_addr_statistics[it1->m_pos_addrstats], other.m_impl->m_addr_statistics[it2->m_pos_addrstats])) {
+                return false;
+            };
+            it1++;
+            it2++;
         }
-
-        // Same for `vvTried`.
-        for (size_t i = 0; i < ADDRMAN_TRIED_BUCKET_COUNT; ++i) {
-            for (size_t j = 0; j < ADDRMAN_BUCKET_SIZE; ++j) {
-                if (!IdsReferToSameAddress(m_impl->vvTried[i][j], other.m_impl->vvTried[i][j])) {
-                    return false;
-                }
-            }
-        }
-
         return true;
     }
 };
