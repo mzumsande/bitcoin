@@ -17,19 +17,19 @@
 #include <utility>
 #include <vector>
 
-class InvalidAddrManVersionError : public std::ios_base::failure
+class InvalidAddrManVersionErrorMultiIndex : public std::ios_base::failure
 {
 public:
-    InvalidAddrManVersionError(std::string msg) : std::ios_base::failure(msg) { }
+    InvalidAddrManVersionErrorMultiIndex(std::string msg) : std::ios_base::failure(msg) { }
 };
 
-class AddrManImpl;
+class AddrManImplMultiIndex;
 
 /** Default for -checkaddrman */
-static constexpr int32_t DEFAULT_ADDRMAN_CONSISTENCY_CHECKS{0};
+static constexpr int32_t DEFAULT_ADDRMAN_CONSISTENCY_CHECKS_MULTIINDEX{0};
 
 /** Test-only struct, capturing info about an address in AddrMan */
-struct AddressPosition {
+struct AddressPositionMultiIndex {
     // Whether the address is in the new or tried table
     const bool tried;
 
@@ -45,11 +45,11 @@ struct AddressPosition {
     const int bucket;
     const int position;
 
-    bool operator==(AddressPosition other) {
+    bool operator==(AddressPositionMultiIndex other) {
         return std::tie(tried, multiplicity, bucket, position) ==
                std::tie(other.tried, other.multiplicity, other.bucket, other.position);
     }
-    explicit AddressPosition(bool tried_in, int multiplicity_in, int bucket_in, int position_in)
+    explicit AddressPositionMultiIndex(bool tried_in, int multiplicity_in, int bucket_in, int position_in)
         : tried{tried_in}, multiplicity{multiplicity_in}, bucket{bucket_in}, position{position_in} {}
 };
 
@@ -82,15 +82,15 @@ struct AddressPosition {
  *    * Several indexes are kept for high performance. Setting m_consistency_check_ratio with the -checkaddrman
  *      configuration option will introduce (expensive) consistency checks for the entire data structure.
  */
-class AddrMan
+class AddrManMultiIndex
 {
 protected:
-    const std::unique_ptr<AddrManImpl> m_impl;
+    const std::unique_ptr<AddrManImplMultiIndex> m_impl;
 
 public:
-    explicit AddrMan(std::vector<bool> asmap, bool deterministic, int32_t consistency_check_ratio);
+    explicit AddrManMultiIndex(std::vector<bool> asmap, bool deterministic, int32_t consistency_check_ratio);
 
-    ~AddrMan();
+    ~AddrManMultiIndex();
 
     template <typename Stream>
     void Serialize(Stream& s_) const;
@@ -181,7 +181,7 @@ public:
      * @return               Information about the address record in AddrMan
      *                       or nullopt if address is not found.
      */
-    std::optional<AddressPosition> FindAddressEntry(const CAddress& addr);
+    std::optional<AddressPositionMultiIndex> FindAddressEntry(const CAddress& addr);
 };
 
 #endif // BITCOIN_ADDRMAN_MULTI_H
