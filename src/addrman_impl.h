@@ -21,6 +21,9 @@
 #include <utility>
 #include <vector>
 
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index_container.hpp>
+
 /** Total number of buckets for tried addresses */
 static constexpr int32_t ADDRMAN_TRIED_BUCKET_COUNT_LOG2{8};
 static constexpr int ADDRMAN_TRIED_BUCKET_COUNT{1 << ADDRMAN_TRIED_BUCKET_COUNT_LOG2};
@@ -32,46 +35,38 @@ static constexpr int32_t ADDRMAN_BUCKET_SIZE_LOG2{6};
 static constexpr int ADDRMAN_BUCKET_SIZE{1 << ADDRMAN_BUCKET_SIZE_LOG2};
 
 /**
- * Extended statistics about a CAddress
+ * Extended statistics about an address
  */
-class AddrInfo : public CAddress
+class AddrInfo : public CService
 {
 public:
-    //! last try whatsoever by us (memory only)
-    int64_t nLastTry{0};
-
-    //! last counted attempt (memory only)
-    int64_t nLastCountAttempt{0};
-
     //! where knowledge about this address first came from
     CNetAddr source;
 
-    //! last successful connection by us
-    int64_t nLastSuccess{0};
-
-    //! connection attempts since last successful attempt
-    int nAttempts{0};
-
-    //! reference count in new sets (memory only)
-    int nRefCount{0};
-
-    //! in tried set? (memory only)
+    //! in tried set?
     bool fInTried{false};
 
-    //! position in vRandom
-    mutable int nRandomPos{-1};
+    //! position in m_addr_statistics
+    mutable int m_pos_addrstats{-1};
 
-    SERIALIZE_METHODS(AddrInfo, obj)
+    //! Which bucket this entry is in (tried bucket for fInTried, new bucket otherwise).
+    int m_bucket;
+
+    //! Which position in that bucket this entry occupies.
+    int m_bucketpos;
+
+    //! Update bucket info
+    void Rebucket(const uint256& key, const NetGroupManager& netgroupman)
     {
-        READWRITEAS(CAddress, obj);
-        READWRITE(obj.source, obj.nLastSuccess, obj.nAttempts);
+        m_bucket = fInTried ? GetTriedBucket(key, netgroupman) : GetNewBucket(key, netgroupman);
+        m_bucketpos = GetBucketPosition(key, !fInTried, m_bucket);
     }
 
-    AddrInfo(const CAddress &addrIn, const CNetAddr &addrSource) : CAddress(addrIn), source(addrSource)
+    AddrInfo(const CService &addrIn, const CNetAddr &addrSource) : CService(addrIn), source(addrSource)
     {
     }
 
-    AddrInfo() : CAddress(), source()
+    AddrInfo() : CService(), source()
     {
     }
 
@@ -89,12 +84,6 @@ public:
 
     //! Calculate in which position of a bucket to store this entry.
     int GetBucketPosition(const uint256 &nKey, bool fNew, int nBucket) const;
-
-    //! Determine whether the statistics about this entry are bad enough so that it can just be deleted
-    bool IsTerrible(int64_t nNow = GetAdjustedTime()) const;
-
-    //! Calculate the relative chance this entry should be given when selecting nodes to connect to
-    double GetChance(int64_t nNow = GetAdjustedTime()) const;
 };
 
 class AddrManImpl
@@ -159,6 +148,7 @@ private:
         V2_ASMAP = 2,         //!< for files including asmap version
         V3_BIP155 = 3,        //!< same as V2_ASMAP plus addresses are in BIP155 format
         V4_MULTIPORT = 4,     //!< adds support for multiple ports per IP
+        V5_MULTIINDEX = 5     //!< Redesign, multi-index based
     };
 
     //! The maximum format this software knows it can unserialize. Also, we always serialize
@@ -166,7 +156,7 @@ private:
     //! The format (first byte in the serialized stream) can be higher than this and
     //! still this software may be able to unserialize the file - if the second byte
     //! (see `lowest_compatible` in `Unserialize()`) is less or equal to this.
-    static constexpr Format FILE_FORMAT = Format::V4_MULTIPORT;
+    static constexpr Format FILE_FORMAT = Format::V5_MULTIINDEX;
 
     //! The initial value of a field that is incremented every time an incompatible format
     //! change is made (such that old software versions would not be able to parse and
@@ -175,37 +165,77 @@ private:
     //! @note Don't increment this. Increment `lowest_compatible` in `Serialize()` instead.
     static constexpr uint8_t INCOMPATIBILITY_BASE = 32;
 
-    //! last used nId
-    int nIdCount GUARDED_BY(cs){0};
+    struct ByAddress {
+    };
+    struct ByBucket {
+    };
 
-    //! table with information about all nIds
-    std::unordered_map<int, AddrInfo> mapInfo GUARDED_BY(cs);
+    //! Extract by address, separately for aliases or non-aliases
+    struct ByAddressExtractor {
+        using result_type = std::pair<const CService&, bool>;
+        result_type operator()(const AddrInfo& info) const { return {info, info.m_pos_addrstats == -1}; }
+    };
 
-    //! find an nId based on its network address and port.
-    std::unordered_map<CService, int, CServiceHash> mapAddr GUARDED_BY(cs);
+    using ByBucketView = std::tuple<bool, int, int>;
 
-    //! randomly-ordered vector of all nIds
-    //! This is mutable because it is unobservable outside the class, so any
-    //! changes to it (even in const methods) are also unobservable.
-    mutable std::vector<int> vRandom GUARDED_BY(cs);
+    //! Extract by bucket
+    struct ByBucketExtractor {
+        using result_type = ByBucketView;
+        result_type operator()(const AddrInfo& info) const { return {info.fInTried, info.m_bucket, info.m_bucketpos}; }
+    };
+
+    using AddrManIndex = boost::multi_index_container<
+        AddrInfo,
+        boost::multi_index::indexed_by<
+            boost::multi_index::ordered_non_unique<boost::multi_index::tag<ByAddress>, ByAddressExtractor>,
+            boost::multi_index::ordered_non_unique<boost::multi_index::tag<ByBucket>, ByBucketExtractor>>>;
+
+    /**
+    *  Unique statistics about an address in addrman.
+    *  If there are multiple aliases in New, there is only one AddrStatistics for them.
+    */
+    struct AddrStatistics {
+        AddrManIndex::index<ByAddress>::type::iterator addr{nullptr};
+
+        //! last try whatsoever by us
+        int64_t nLastTry{0};
+
+        //! last counted attempt
+        int64_t nLastCountAttempt{0};
+
+        //! last successful connection by us
+        int64_t nLastSuccess{0};
+
+        //! connection attempts since last successful attempt
+        int nAttempts{0};
+
+        //! network-propagated timestamp
+        uint32_t nTime{0};
+
+        //! Service flags
+        ServiceFlags nServices{NODE_NONE};
+
+        AddrStatistics(){};
+        AddrStatistics(AddrManIndex::index<ByAddress>::type::iterator addr_in) : addr(addr_in){};
+    };
+
+    // The actual data table
+    AddrManIndex m_index GUARDED_BY(cs);
+
+    //! randomly-ordered vector of all (non-alias) entries
+    mutable std::vector<AddrStatistics> m_addr_statistics GUARDED_BY(cs);
 
     // number of "tried" entries
     int nTried GUARDED_BY(cs){0};
 
-    //! list of "tried" buckets
-    int vvTried[ADDRMAN_TRIED_BUCKET_COUNT][ADDRMAN_BUCKET_SIZE] GUARDED_BY(cs);
-
     //! number of (unique) "new" entries
     int nNew GUARDED_BY(cs){0};
-
-    //! list of "new" buckets
-    int vvNew[ADDRMAN_NEW_BUCKET_COUNT][ADDRMAN_BUCKET_SIZE] GUARDED_BY(cs);
 
     //! last time Good was called (memory only). Initially set to 1 so that "never" is strictly worse.
     int64_t nLastGood GUARDED_BY(cs){1};
 
     //! Holds addrs inserted into tried table that collide with existing entries. Test-before-evict discipline used to resolve these collisions.
-    std::set<int> m_tried_collisions;
+    std::set<const AddrInfo*> m_tried_collisions;
 
     /** Perform consistency checks every m_consistency_check_ratio operations (if non-zero). */
     const int32_t m_consistency_check_ratio;
@@ -213,23 +243,64 @@ private:
     /** Reference to the netgroup manager. netgroupman must be constructed before addrman and destructed after. */
     const NetGroupManager& m_netgroupman;
 
-    //! Find an entry.
-    AddrInfo* Find(const CService& addr, int* pnId = nullptr) EXCLUSIVE_LOCKS_REQUIRED(cs);
+    //! Count the number of occurrences of entries with this address (including aliases).
+    int CountAddr(const CService& addr) const EXCLUSIVE_LOCKS_REQUIRED(cs);
 
-    //! Create a new entry and add it to the internal data structures mapInfo, mapAddr and vRandom.
-    AddrInfo* Create(const CAddress& addr, const CNetAddr& addrSource, int* pnId = nullptr) EXCLUSIVE_LOCKS_REQUIRED(cs);
+    //! Update the nNew or nTried counters, respectively
+    void UpdateStat(const AddrInfo& info, int inc) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
-    //! Swap two elements in vRandom.
-    void SwapRandom(unsigned int nRandomPos1, unsigned int nRandomPos2) const EXCLUSIVE_LOCKS_REQUIRED(cs);
+    void EraseInner(AddrManIndex::index<ByAddress>::type::iterator it) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
-    //! Delete an entry. It must not be in tried, and have refcount 0.
-    void Delete(int nId) EXCLUSIVE_LOCKS_REQUIRED(cs);
+    //! Determine whether the statistics about an entry are bad enough so that it can just be deleted
+    bool IsTerrible(const AddrStatistics& stat, int64_t nNow = GetAdjustedTime()) const;
 
-    //! Clear a position in a "new" table. This is the only place where entries are actually deleted.
-    void ClearNew(int nUBucket, int nUBucketPos) EXCLUSIVE_LOCKS_REQUIRED(cs);
+    //! Calculate the relative chance this entry should be given when selecting nodes to connect to
+    double GetChance(const AddrStatistics& stat, int64_t nNow = GetAdjustedTime()) const;
+
+    //! Creates a CAddress from AddrInfo and its AddrStatistics
+    CAddress MakeAddress(const AddrInfo& addrInfo) const EXCLUSIVE_LOCKS_REQUIRED(cs);
+
+    template <typename Iter>
+    void Erase(Iter it) EXCLUSIVE_LOCKS_REQUIRED(cs)
+    {
+        EraseInner(m_index.project<ByAddress>(it));
+    }
+
+    //! Modify an entry. This will also recalculate the bucket it's in.
+    template <typename Iter, typename Fun>
+    void Modify(Iter it, Fun fun) EXCLUSIVE_LOCKS_REQUIRED(cs)
+    {
+        UpdateStat(*it, -1);
+        m_index.modify(m_index.project<ByAddress>(it), [&](AddrInfo& info) {
+            fun(info);
+            info.Rebucket(nKey, m_netgroupman);
+        });
+        UpdateStat(*it, 1);
+    }
+
+    AddrManIndex::index<ByAddress>::type::iterator Insert(AddrInfo info, AddrStatistics stats, bool alias) EXCLUSIVE_LOCKS_REQUIRED(cs)
+    {
+        info.Rebucket(nKey, m_netgroupman);
+
+        if (alias) {
+            info.m_pos_addrstats = -1;
+        } else {
+            info.m_pos_addrstats = m_addr_statistics.size();
+        }
+        UpdateStat(info, 1);
+        auto it = m_index.insert(std::move(info)).first;
+        stats.addr = it;
+        if (!alias) {
+            m_addr_statistics.push_back(stats);
+        }
+        return it;
+    }
+
+    //! Swap two elements in m_addr_statistics.
+    void SwapRandom(unsigned int m_pos_addrstats1, unsigned int m_pos_addrstats2) const EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     //! Move an entry from the "new" table(s) to the "tried" table
-    void MakeTried(AddrInfo& info, int nId) EXCLUSIVE_LOCKS_REQUIRED(cs);
+    void MakeTried(AddrManIndex::index<ByAddress>::type::iterator it) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     /** Attempt to add a single address to addrman's new table.
      *  @see AddrMan::Add() for parameters. */
