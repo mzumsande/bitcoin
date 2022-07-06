@@ -171,7 +171,12 @@ public:
     bool WriteUndoDataForBlock(const CBlockUndo& blockundo, BlockValidationState& state, CBlockIndex* pindex, const CChainParams& chainparams)
         EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
 
-    /** Store block on disk. If dbp is not nullptr, then it provides the known position of the block within a block file on disk. */
+    /** Store block on disk if dbp is nullptr.
+      * If dbp is not nullptr (typically during reindex), then it must provide the known position
+      * of the actual block data within a block file on disk (after the header). In that case,
+      * there is nothing new to store and SaveBlockToDisk only updates the block file info statistics, so that later blocks
+      * are appended at the correct location.
+     */
     FlatFilePos SaveBlockToDisk(const CBlock& block, int nHeight, CChain& active_chain, const CChainParams& chainparams, const FlatFilePos* dbp);
 
     /** Whether running in -prune mode. */
