@@ -645,7 +645,6 @@ void BlockManager::UpdateBlockFileInfo(const FlatFilePos& pos, unsigned int nAdd
     }
 
     if ((int)nFile != m_last_blockfile) {
-        FlushBlockFile(/*fFinalize=*/false, /*finalize_undo=*/false);
         m_last_blockfile = nFile;
     }
 
