@@ -429,6 +429,15 @@ class TestNode():
         self._raise_assertion_error('Expected messages "{}" does not partially match log:\n\n{}\n\n'.format(str(expected_msgs), print_log))
 
     @contextlib.contextmanager
+    def wait_until_time(self, rand_time):
+        time_end = time.time_ns() + rand_time
+        yield
+        while True:
+            if time.time_ns() >= time_end:
+                break
+
+
+    @contextlib.contextmanager
     def wait_for_debug_log(self, expected_msgs, timeout=60):
         """
         Block until we see a particular debug log message fragment or until we exceed the timeout.
