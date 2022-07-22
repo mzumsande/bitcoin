@@ -66,7 +66,7 @@ class InitStressTest(BitcoinTestFramework):
         self.log.info(f"Gauged duration: {duration/1E9}s")
         self.log.info("Test run successful")
 
-        for _ in range(100):
+        for _ in range(10000):
             self.stop_node(0)
             rand_time = random.randint(0, duration)
             #rand_time = 1650314894

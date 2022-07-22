@@ -42,14 +42,19 @@ class InitStressTest(BitcoinTestFramework):
     def run_test(self):
         def check_clean_start():
             """Ensure that node restarts successfully after various interrupts."""
-            node.start(extra_args=['-coinstatsindex'])#, '-addrmantest=1'
+            node.start(extra_args=['-coinstatsindex', '-txindex', '-blockfilterindex'])#, '-addrmantest=1'
             node.wait_for_rpc_connection()
-            assert_equal(200, node.getblockcount())
+            #assert_equal(200, node.getblockcount())
+
+        def func_prepare():
+            """Ensure that node restarts successfully after various interrupts."""
+            node.start(extra_args=['-coinstatsindex', '-txindex', '-blockfilterindex'])
+            node.wait_for_rpc_connection()
 
         def func_under_test():
-            """Ensure that node restarts successfully after various interrupts."""
-            node.start(extra_args=["-coinstatsindex"])
-            node.wait_for_rpc_connection()
+            self.generate(node, 2)
+            node.dumptxoutset(f"tmp_{random.randint(0, 1000000)}.dat")
+            self.generate(node, 2)
 
         def sigterm_node():
             #node.process.terminate()
@@ -58,9 +63,9 @@ class InitStressTest(BitcoinTestFramework):
 
         node = self.nodes[0]
         self.stop_node(0)
+        func_prepare()
         start_ns = time.time_ns()
         func_under_test()
-        node.wait_for_rpc_connection()
         end_ns = time.time_ns()
         duration = end_ns - start_ns
         self.log.info(f"Gauged duration: {duration/1E9}s")
@@ -69,11 +74,10 @@ class InitStressTest(BitcoinTestFramework):
         for _ in range(100):
             self.stop_node(0)
             rand_time = random.randint(0, duration)
-            #rand_time = 1650314894
             self.log.info(f"Aborting after {rand_time/1E9} seconds")
+            func_prepare()
             with node.wait_until_time(rand_time):
-                node.start(extra_args=["-coinstatsindex"])
-            self.log.debug("Terminating node after time is up")
+                func_under_test()
             sigterm_node()
             check_clean_start()
 
