@@ -167,6 +167,7 @@ class P2PConnection(asyncio.Protocol):
         self._send_lock = threading.Lock()
         self.v2_state = None  # EncryptedP2PState object needed for v2 p2p connections
         self.supports_v2_p2p = False  # set if the connection supports v2 p2p
+        self.reconnect = False  # set if reconnection needs to happen
         self.queue_messages = []  # queue messages to send after initial v2 handshake
 
     @property
@@ -194,8 +195,9 @@ class P2PConnection(asyncio.Protocol):
         coroutine = loop.create_connection(lambda: self, host=self.dstaddr, port=self.dstport)
         return lambda: loop.call_soon_threadsafe(loop.create_task, coroutine)
 
-    def peer_accept_connection(self, connect_id, connect_cb=lambda: None, *, net, timeout_factor, supports_v2_p2p=False):
+    def peer_accept_connection(self, connect_id, connect_cb=lambda: None, *, net, timeout_factor, supports_v2_p2p=False, reconnect=False):
         self.peer_connect_helper('0', 0, net, timeout_factor)
+        self.reconnect = reconnect
         if supports_v2_p2p:
             self.supports_v2_p2p = True
             self.v2_state = EncryptedP2PState(initiating=False, net=net)
@@ -226,7 +228,8 @@ class P2PConnection(asyncio.Protocol):
 
     def connection_lost(self, exc):
         """asyncio callback when a connection is closed."""
-        if exc:
+        # don't display warning if reconnection needs to be attempted using v1 P2P
+        if exc and not self.reconnect:
             logger.warning("Connection lost to {}:{} due to {}".format(self.dstaddr, self.dstport, exc))
         else:
             logger.debug("Closed connection to: %s:%d" % (self.dstaddr, self.dstport))
@@ -352,7 +355,8 @@ class P2PConnection(asyncio.Protocol):
                 self._log_message("receive", t)
                 self.on_message(t)
         except Exception as e:
-            logger.exception('Error reading message:', repr(e))
+            if not self.reconnect:
+                logger.exception('Error reading message:', repr(e))
             raise
 
     def on_message(self, message):
@@ -479,7 +483,10 @@ class P2PInterface(P2PConnection):
     def peer_accept_connection(self, *args, services=P2P_SERVICES, **kwargs):
         create_conn = super().peer_accept_connection(*args, **kwargs)
         self.peer_connect_send_version(services)
-
+        # queued messages are sent using v1 P2P after reconnection
+        if self.reconnect:
+            self.queue_messages.append(self.on_connection_send_msg)
+            self.on_connection_send_msg = None
         return create_conn
 
     # Message receiving methods
@@ -553,6 +560,11 @@ class P2PInterface(P2PConnection):
 
     def on_version(self, message):
         assert message.nVersion >= MIN_P2P_VERSION_SUPPORTED, "Version {} received. Test framework only supports versions greater than {}".format(message.nVersion, MIN_P2P_VERSION_SUPPORTED)
+        # reconnection using v1 P2P has happened since version message can be processed, previously queued messages are sent using v1 P2P here
+        if self.reconnect:
+            while self.queue_messages:
+                message = self.queue_messages.pop(0)
+                self.send_message(message)
         if message.nVersion >= 70016 and self.wtxidrelay:
             self.send_message(msg_wtxidrelay())
         if self.support_addrv2:
@@ -725,6 +737,11 @@ class NetworkThread(threading.Thread):
         if addr is None:
             addr = '127.0.0.1'
 
+        def exception_handler(loop, context):
+            if not p2p.reconnect:
+                loop.default_exception_handler(context)
+
+        cls.network_event_loop.set_exception_handler(exception_handler)
         coroutine = cls.create_listen_server(addr, port, callback, p2p)
         cls.network_event_loop.call_soon_threadsafe(cls.network_event_loop.create_task, coroutine)
 
@@ -738,7 +755,9 @@ class NetworkThread(threading.Thread):
             protocol function from that dict, and returns it so the event loop
             can start executing it."""
             response = cls.protos.get((addr, port))
-            cls.protos[(addr, port)] = None
+            # remove protocol function from dict only when reconnection doesn't need to happen/already happened
+            if not proto.reconnect:
+                cls.protos[(addr, port)] = None
             return response
 
         if (addr, port) not in cls.listeners:
