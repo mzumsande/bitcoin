@@ -1587,6 +1587,25 @@ std::unordered_set<Network> CConnman::GetReachableEmptyNetworks() const
     return networks;
 }
 
+int CConnman::GetOutboundCountForNet(Network net)
+{
+    LOCK(m_nodes_mutex);
+    int outbound_peers{0};
+    std::optional<Network> net_alt;
+    // Treat clearnet (IPv4 and IPv6) as one network
+    if (net == Network::NET_IPV4) net_alt = Network::NET_IPV6;
+    if (net == Network::NET_IPV6) net_alt = Network::NET_IPV4;
+    for (const auto& pnode : m_nodes) {
+        if (pnode->fSuccessfullyConnected && !pnode->fDisconnect && (pnode->IsFullOutboundConn() || pnode->IsManualConn())) {
+            auto net_peer{pnode->addr.GetNetwork()};
+            if (net == net_peer || (net_alt.has_value() && net_alt == net_peer)) {
+                ++outbound_peers;
+            }
+        }
+    }
+    return outbound_peers;
+}
+
 void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
 {
     SetSyscallSandboxPolicy(SyscallSandboxPolicy::NET_OPEN_CONNECTION);

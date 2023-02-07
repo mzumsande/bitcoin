@@ -864,6 +864,11 @@ public:
     /** Return true if we should disconnect the peer for failing an inactivity check. */
     bool ShouldRunInactivityChecks(const CNode& node, std::chrono::seconds now) const;
 
+    /** Get Number of tx-relaying persistent outbound connections (Full outbound or Manual)
+        to a Network. This lumps clearnet (IPv4 and IPv6) together into one network.
+     */
+    int GetOutboundCountForNet(Network net);
+
 private:
     struct ListenSocket {
     public:
