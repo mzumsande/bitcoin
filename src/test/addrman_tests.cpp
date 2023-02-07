@@ -192,6 +192,58 @@ BOOST_AUTO_TEST_CASE(addrman_select)
     BOOST_CHECK_EQUAL(ports.size(), 3U);
 }
 
+BOOST_AUTO_TEST_CASE(addrman_select_by_network)
+{
+    auto addrman = std::make_unique<AddrMan>(EMPTY_NETGROUPMAN, DETERMINISTIC, GetCheckRatio(m_node));
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/true, NET_IPV4).first.ToStringAddrPort(), "[::]:0");
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/false, NET_IPV4).first.ToStringAddrPort(), "[::]:0");
+
+    // add ipv4 address to the new table
+    CNetAddr source = ResolveIP("252.2.2.2");
+    CService addr1 = ResolveService("250.1.1.1", 8333);
+    BOOST_CHECK(addrman->Add({CAddress(addr1, NODE_NONE)}, source));
+
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/true, NET_IPV4).first.ToStringAddrPort(), "250.1.1.1:8333");
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/false, NET_IPV4).first.ToStringAddrPort(), "250.1.1.1:8333");
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/false, NET_IPV6).first.ToStringAddrPort(), "[::]:0");
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/false, NET_ONION).first.ToStringAddrPort(), "[::]:0");
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/false, NET_I2P).first.ToStringAddrPort(), "[::]:0");
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/false, NET_CJDNS).first.ToStringAddrPort(), "[::]:0");
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/false).first.ToStringAddrPort(), "250.1.1.1:8333");
+
+    // add I2P address to the new table
+    CService i2p_addr;
+    i2p_addr.SetSpecial("udhdrtrcetjm5sxzskjyr5ztpeszydbh4dpl3pl4utgqqw2v4jna.b32.i2p");
+    BOOST_CHECK(addrman->Add({CAddress(i2p_addr, NODE_NONE)}, source));
+
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/true, NET_I2P).first.ToStringAddrPort(), "udhdrtrcetjm5sxzskjyr5ztpeszydbh4dpl3pl4utgqqw2v4jna.b32.i2p:0");
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/false, NET_I2P).first.ToStringAddrPort(), "udhdrtrcetjm5sxzskjyr5ztpeszydbh4dpl3pl4utgqqw2v4jna.b32.i2p:0");
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/false, NET_IPV4).first.ToStringAddrPort(), "250.1.1.1:8333");
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/false, NET_IPV6).first.ToStringAddrPort(), "[::]:0");
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/false, NET_ONION).first.ToStringAddrPort(), "[::]:0");
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/false, NET_CJDNS).first.ToStringAddrPort(), "[::]:0");
+
+    // bump I2P address to tried table
+    BOOST_CHECK(addrman->Good(CAddress(i2p_addr, NODE_NONE)));
+
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/true, NET_I2P).first.ToStringAddrPort(), "[::]:0");
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/false, NET_I2P).first.ToStringAddrPort(), "udhdrtrcetjm5sxzskjyr5ztpeszydbh4dpl3pl4utgqqw2v4jna.b32.i2p:0");
+
+    // add another I2P address to the new table
+    CService i2p_addr2;
+    i2p_addr2.SetSpecial("c4gfnttsuwqomiygupdqqqyy5y5emnk5c73hrfvatri67prd7vyq.b32.i2p");
+    BOOST_CHECK(addrman->Add({CAddress(i2p_addr2, NODE_NONE)}, source));
+
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/true, NET_I2P).first.ToStringAddrPort(), "c4gfnttsuwqomiygupdqqqyy5y5emnk5c73hrfvatri67prd7vyq.b32.i2p:0");
+
+    // ensure that both new and tried table are selected from
+    std::set<std::string> i2p_addrs;
+    for (int i = 0; i < 10; ++i) {
+        i2p_addrs.insert(addrman->Select(/*new_only*/false, NET_I2P).first.ToStringAddrPort());
+    }
+    BOOST_CHECK_EQUAL(i2p_addrs.size(), 2U);
+}
+
 BOOST_AUTO_TEST_CASE(addrman_new_collisions)
 {
     auto addrman = std::make_unique<AddrMan>(EMPTY_NETGROUPMAN, DETERMINISTIC, GetCheckRatio(m_node));
