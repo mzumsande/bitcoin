@@ -244,6 +244,22 @@ BOOST_AUTO_TEST_CASE(addrman_select_by_network)
     BOOST_CHECK_EQUAL(i2p_addrs.size(), 2U);
 }
 
+BOOST_AUTO_TEST_CASE(addrman_select_special)
+{
+    // use a non-deterministic addrman to ensure a passing test isn't due to setup
+    auto addrman = std::make_unique<AddrMan>(EMPTY_NETGROUPMAN, /*deterministic*/false, GetCheckRatio(m_node));
+
+    // add ipv4 address to the new table
+    CNetAddr source = ResolveIP("252.2.2.2");
+    CService addr1 = ResolveService("250.1.1.3", 8333);
+    BOOST_CHECK(addrman->Add({CAddress(addr1, NODE_NONE)}, source));
+
+    // since the only address is on the new table, ensure that the new table
+    // gets selected even if new_only is false. if the table was being selected
+    // at random, this test will sporadically fail
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/false, NET_IPV4).first.ToStringAddrPort(), "250.1.1.3:8333");
+}
+
 BOOST_AUTO_TEST_CASE(addrman_new_collisions)
 {
     auto addrman = std::make_unique<AddrMan>(EMPTY_NETGROUPMAN, DETERMINISTIC, GetCheckRatio(m_node));
