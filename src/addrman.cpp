@@ -792,6 +792,17 @@ std::pair<CAddress, NodeSeconds> AddrManImpl::Select_(bool newOnly) const
     }
 }
 
+int AddrManImpl::LookupAddrmanEntry(bool use_tried, int bucket, int position) const
+{
+    AssertLockHeld(cs);
+
+    if (use_tried) {
+        return vvTried[bucket][position];
+    } else {
+        return vvNew[bucket][position];
+    }
+}
+
 std::vector<CAddress> AddrManImpl::GetAddr_(size_t max_addresses, size_t max_pct, std::optional<Network> network) const
 {
     AssertLockHeld(cs);

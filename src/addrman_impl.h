@@ -253,6 +253,9 @@ private:
 
     std::pair<CAddress, NodeSeconds> Select_(bool newOnly) const EXCLUSIVE_LOCKS_REQUIRED(cs);
 
+    /** Helper to generalize looking up an addrman entry from either table. */
+    int LookupAddrmanEntry(bool use_tried, int bucket, int position) const EXCLUSIVE_LOCKS_REQUIRED(cs);
+
     std::vector<CAddress> GetAddr_(size_t max_addresses, size_t max_pct, std::optional<Network> network) const EXCLUSIVE_LOCKS_REQUIRED(cs);
 
     void Connected_(const CService& addr, NodeSeconds time) EXCLUSIVE_LOCKS_REQUIRED(cs);
