@@ -132,26 +132,26 @@ BOOST_AUTO_TEST_CASE(addrman_ports)
     BOOST_CHECK_EQUAL(addr_ret3.ToStringAddrPort(), "250.1.1.1:8333");
 }
 
-
 BOOST_AUTO_TEST_CASE(addrman_select)
 {
     auto addrman = std::make_unique<AddrMan>(EMPTY_NETGROUPMAN, DETERMINISTIC, GetCheckRatio(m_node));
+    BOOST_CHECK_EQUAL(addrman->Select(false).first.ToStringAddrPort(), "[::]:0");
+    BOOST_CHECK_EQUAL(addrman->Select(true).first.ToStringAddrPort(), "[::]:0");
 
     CNetAddr source = ResolveIP("252.2.2.2");
 
-    // Test: Select from new with 1 addr in new.
+    // Add 1 address to the new table
     CService addr1 = ResolveService("250.1.1.1", 8333);
     BOOST_CHECK(addrman->Add({CAddress(addr1, NODE_NONE)}, source));
     BOOST_CHECK_EQUAL(addrman->Size(), 1U);
 
-    bool new_only = true;
-    auto addr_ret1 = addrman->Select(new_only).first;
-    BOOST_CHECK_EQUAL(addr_ret1.ToStringAddrPort(), "250.1.1.1:8333");
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/true).first.ToStringAddrPort(), "250.1.1.1:8333");
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/false).first.ToStringAddrPort(), "250.1.1.1:8333");
 
-    // Test: move addr to tried, select from new expected nothing returned.
+    // Move address to the tried table
     BOOST_CHECK(addrman->Good(CAddress(addr1, NODE_NONE)));
     BOOST_CHECK_EQUAL(addrman->Size(), 1U);
-    auto addr_ret2 = addrman->Select(new_only).first;
+    auto addr_ret2 = addrman->Select(/*new_only*/true).first;
     BOOST_CHECK_EQUAL(addr_ret2.ToStringAddrPort(), "[::]:0");
 
     auto addr_ret3 = addrman->Select().first;
@@ -159,13 +159,15 @@ BOOST_AUTO_TEST_CASE(addrman_select)
 
     BOOST_CHECK_EQUAL(addrman->Size(), 1U);
 
-
-    // Add three addresses to new table.
+    // Add one address to the new table
     CService addr2 = ResolveService("250.3.1.1", 8333);
+    BOOST_CHECK(addrman->Add({CAddress(addr2, NODE_NONE)}, ResolveService("250.3.1.1", 8333)));
+    BOOST_CHECK_EQUAL(addrman->Select(/*new_only*/true).first.ToStringAddrPort(), "250.3.1.1:8333");
+
+    // Add two more addresses to the new table
     CService addr3 = ResolveService("250.3.2.2", 9999);
     CService addr4 = ResolveService("250.3.3.3", 9999);
 
-    BOOST_CHECK(addrman->Add({CAddress(addr2, NODE_NONE)}, ResolveService("250.3.1.1", 8333)));
     BOOST_CHECK(addrman->Add({CAddress(addr3, NODE_NONE)}, ResolveService("250.3.1.1", 8333)));
     BOOST_CHECK(addrman->Add({CAddress(addr4, NODE_NONE)}, ResolveService("250.4.1.1", 8333)));
 
@@ -181,10 +183,10 @@ BOOST_AUTO_TEST_CASE(addrman_select)
     BOOST_CHECK(addrman->Add({CAddress(addr7, NODE_NONE)}, ResolveService("250.1.1.3", 8333)));
     BOOST_CHECK(addrman->Good(CAddress(addr7, NODE_NONE)));
 
-    // Test: 6 addrs + 1 addr from last test = 7.
+    // 6 addrs + 1 addr from last test = 7.
     BOOST_CHECK_EQUAL(addrman->Size(), 7U);
 
-    // Test: Select pulls from new and tried regardless of port number.
+    // Select pulls from new and tried regardless of port number.
     std::set<uint16_t> ports;
     for (int i = 0; i < 20; ++i) {
         ports.insert(addrman->Select().first.GetPort());
