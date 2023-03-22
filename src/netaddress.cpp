@@ -533,7 +533,7 @@ static std::string IPv4ToString(Span<const uint8_t> a)
 
 // Return an IPv6 address text representation with zero compression as described in RFC 5952
 // ("A Recommendation for IPv6 Address Text Representation").
-static std::string IPv6ToString(Span<const uint8_t> a, uint32_t scope_id)
+std::string IPv6ToString(Span<const uint8_t> a, uint32_t scope_id)
 {
     assert(a.size() == ADDR_IPV6_SIZE);
     const std::array groups{

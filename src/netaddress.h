@@ -113,6 +113,8 @@ static constexpr uint16_t I2P_SAM31_PORT{0};
 
 std::string OnionToString(Span<const uint8_t> addr);
 
+std::string IPv6ToString(Span<const uint8_t> a, uint32_t scope_id);
+
 /**
  * Network address.
  */

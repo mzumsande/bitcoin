@@ -1121,6 +1121,21 @@ size_t AddrManImpl::Size(std::optional<Network> net, std::optional<bool> in_new)
     return ret;
 }
 
+size_t AddrManImpl::NewBucketsUsed() const
+{
+    LOCK(cs);
+    size_t nSize = 0;
+    for (int bucket = 0; bucket < ADDRMAN_NEW_BUCKET_COUNT; bucket++) {
+        for (int i = 0; i < ADDRMAN_BUCKET_SIZE; i++) {
+            if (vvNew[bucket][i] != -1){
+                nSize++;
+                break;
+            }
+        }
+    }
+    return nSize;
+}
+
 bool AddrManImpl::Add(const std::vector<CAddress>& vAddr, const CNetAddr& source, std::chrono::seconds time_penalty)
 {
     LOCK(cs);
@@ -1235,6 +1250,11 @@ template void AddrMan::Unserialize(CHashVerifier<CDataStream>& s);
 size_t AddrMan::Size(std::optional<Network> net, std::optional<bool> in_new) const
 {
     return m_impl->Size(net, in_new);
+}
+
+size_t AddrMan::NewBucketsUsed() const
+{
+    return m_impl->NewBucketsUsed();
 }
 
 bool AddrMan::Add(const std::vector<CAddress>& vAddr, const CNetAddr& source, std::chrono::seconds time_penalty)

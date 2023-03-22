@@ -187,6 +187,8 @@ public:
      *                       or nullopt if address is not found.
      */
     std::optional<AddressPosition> FindAddressEntry(const CAddress& addr);
+
+    size_t NewBucketsUsed() const;
 };
 
 #endif // BITCOIN_ADDRMAN_H
