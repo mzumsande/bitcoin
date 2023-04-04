@@ -75,7 +75,9 @@ static const int MAX_FEELER_CONNECTIONS = 1;
 /** -listen default */
 static const bool DEFAULT_LISTEN = true;
 /** The maximum number of peer connections to maintain. */
-static const unsigned int DEFAULT_MAX_PEER_CONNECTIONS = 125;
+static const unsigned int DEFAULT_MAX_PEER_CONNECTIONS{200};
+/** Percentage of inbound connection slots that tx-relaying peers can use */
+static const float FULL_RELAY_INBOUND_PCT{0.6};
 /** The default for -maxuploadtarget. 0 = Unlimited */
 static const std::string DEFAULT_MAX_UPLOAD_TARGET{"0M"};
 /** Default for blocks only*/
@@ -822,6 +824,7 @@ public:
         m_max_outbound_block_relay = std::min(MAX_BLOCK_RELAY_ONLY_CONNECTIONS, m_max_automatic_connections - m_max_outbound_full_relay);
         m_max_automatic_outbound = m_max_outbound_full_relay + m_max_outbound_block_relay + m_max_feeler;
         m_max_inbound = std::max(0, m_max_automatic_connections - m_max_automatic_outbound);
+        m_max_inbound_full_relay = std::max(0, static_cast<int>(FULL_RELAY_INBOUND_PCT * m_max_inbound));
         m_use_addrman_outgoing = connOptions.m_use_addrman_outgoing;
         m_client_interface = connOptions.uiInterface;
         m_banman = connOptions.m_banman;
@@ -1220,6 +1223,7 @@ private:
     int m_max_outbound_block_relay;
     int m_max_automatic_outbound;
     int m_max_inbound;
+    int m_max_inbound_full_relay;
 
     bool m_use_addrman_outgoing;
     CClientUIInterface* m_client_interface;
