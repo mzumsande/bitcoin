@@ -1089,9 +1089,10 @@ private:
      * to forge. In order to partition a node the attacker must be
      * simultaneously better at all of them than honest peers.
      *
+     * @param[in] tx_relaying_peer Whether to only select full relay peers
      * @return                     True if a node was marked for disconnect
      */
-    bool AttemptToEvictConnection();
+    bool AttemptToEvictConnection(bool tx_relaying_peer=false);
     CNode* ConnectNode(CAddress addrConnect, const char *pszDest, bool fCountFailure, ConnectionType conn_type) EXCLUSIVE_LOCKS_REQUIRED(!m_unused_i2p_sessions_mutex);
     void AddWhitelistPermissionFlags(NetPermissionFlags& flags, const CNetAddr &addr) const;
 
