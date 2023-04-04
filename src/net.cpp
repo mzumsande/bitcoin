@@ -1062,7 +1062,9 @@ void CConnman::CreateNodeFromAcceptedSocket(std::unique_ptr<Sock>&& sock,
                                             const CAddress& addr)
 {
     int nInbound = 0;
+    int full_relay_inbound_count{0};
     int nMaxInbound = nMaxConnections - m_max_outbound;
+    int max_full_relay_inbound{std::max(0, std::min(nMaxInbound, DEFAULT_MAX_FULL_RELAY_INBOUND))};
 
     AddWhitelistPermissionFlags(permission_flags, addr);
     if (NetPermissions::HasFlag(permission_flags, NetPermissionFlags::Implicit)) {
@@ -1076,7 +1078,12 @@ void CConnman::CreateNodeFromAcceptedSocket(std::unique_ptr<Sock>&& sock,
     {
         LOCK(m_nodes_mutex);
         for (const CNode* pnode : m_nodes) {
-            if (pnode->IsInboundConn()) nInbound++;
+            if (pnode->IsInboundConn()) {
+                nInbound++;
+                if (pnode->m_relays_txs) {
+                    ++full_relay_inbound_count;
+                }
+            }
         }
     }
 
@@ -1114,7 +1121,14 @@ void CConnman::CreateNodeFromAcceptedSocket(std::unique_ptr<Sock>&& sock,
         return;
     }
 
-    if (nInbound >= nMaxInbound)
+    // Specifically evict a tx-relaying inbound peer if these slots are full
+    if (full_relay_inbound_count >= max_full_relay_inbound) {
+        if (!AttemptToEvictConnection(/*tx_relaying_peer=*/true)) {
+            LogPrint(BCLog::NET, "failed to find a tx-relaying eviction candidate - connection dropped (full)\n");
+            return;
+        }
+    }
+    else if (nInbound >= nMaxInbound)
     {
         if (!AttemptToEvictConnection()) {
             // No connection to evict, disconnect the new connection
