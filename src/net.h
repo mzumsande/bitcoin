@@ -797,6 +797,7 @@ public:
         int m_max_outbound_block_relay = 0;
         int nMaxAddnode = 0;
         int nMaxFeeler = 0;
+        int m_max_inbound_full_relay = 0;
         CClientUIInterface* uiInterface = nullptr;
         NetEventsInterface* m_msgproc = nullptr;
         BanMan* m_banman = nullptr;
@@ -830,6 +831,8 @@ public:
         nMaxAddnode = connOptions.nMaxAddnode;
         nMaxFeeler = connOptions.nMaxFeeler;
         m_max_outbound = m_max_outbound_full_relay + m_max_outbound_block_relay + nMaxFeeler;
+        m_max_inbound_full_relay = connOptions.m_max_inbound_full_relay;
+
         m_client_interface = connOptions.uiInterface;
         m_banman = connOptions.m_banman;
         m_msgproc = connOptions.m_msgproc;
@@ -1228,6 +1231,7 @@ private:
     int nMaxAddnode;
     int nMaxFeeler;
     int m_max_outbound;
+    int m_max_inbound_full_relay;
     bool m_use_addrman_outgoing;
     CClientUIInterface* m_client_interface;
     NetEventsInterface* m_msgproc;

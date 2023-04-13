@@ -1064,7 +1064,7 @@ void CConnman::CreateNodeFromAcceptedSocket(std::unique_ptr<Sock>&& sock,
     int nInbound = 0;
     int full_relay_inbound_count{0};
     int nMaxInbound = nMaxConnections - m_max_outbound;
-    int max_full_relay_inbound{std::max(0, std::min(nMaxInbound, DEFAULT_MAX_FULL_RELAY_INBOUND))};
+    int max_full_relay_inbound = std::max(0, std::min(nMaxInbound, m_max_inbound_full_relay));
 
     AddWhitelistPermissionFlags(permission_flags, addr);
     if (NetPermissions::HasFlag(permission_flags, NetPermissionFlags::Implicit)) {
