@@ -163,6 +163,7 @@ static RPCHelpMan getpeerinfo()
                     {RPCResult::Type::STR, "connection_type", "Type of connection: \n" + Join(CONNECTION_TYPE_DOC, ",\n") + ".\n"
                                                               "Please note this output is unlikely to be stable in upcoming releases as we iterate to\n"
                                                               "best capture connection behaviors."},
+                    {RPCResult::Type::NUM, "invs_queued", "Number of transactions queued to be announced to this peer"},
                 }},
             }},
         },
@@ -267,6 +268,7 @@ static RPCHelpMan getpeerinfo()
         }
         obj.pushKV("bytesrecv_per_msg", recvPerMsgType);
         obj.pushKV("connection_type", ConnectionTypeAsString(stats.m_conn_type));
+        obj.pushKV("invs_queued", statestats.m_invs_queued );
 
         ret.push_back(obj);
     }

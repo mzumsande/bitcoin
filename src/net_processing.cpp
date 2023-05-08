@@ -1597,6 +1597,7 @@ bool PeerManagerImpl::GetNodeStateStats(NodeId nodeid, CNodeStateStats& stats) c
     if (auto tx_relay = peer->GetTxRelay(); tx_relay != nullptr) {
         stats.m_relay_txs = WITH_LOCK(tx_relay->m_bloom_filter_mutex, return tx_relay->m_relay_txs);
         stats.m_fee_filter_received = tx_relay->m_fee_filter_received.load();
+        stats.m_invs_queued = WITH_LOCK(tx_relay->m_tx_inventory_mutex, return tx_relay->m_tx_inventory_to_send.size());
     } else {
         stats.m_relay_txs = false;
         stats.m_fee_filter_received = 0;
