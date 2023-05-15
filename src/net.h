@@ -1080,6 +1080,17 @@ private:
      */
     bool AlreadyConnectedToAddress(const CAddress& addr);
 
+    /**
+     * Try to find an inbound connection to evict when the node is full.
+     * Extreme care must be taken to avoid opening the node to attacker
+     * triggered network partitioning.
+     * The strategy used here is to protect a small number of peers
+     * for each of several distinct characteristics which are difficult
+     * to forge. In order to partition a node the attacker must be
+     * simultaneously better at all of them than honest peers.
+     *
+     * @return                     True if a node was marked for disconnect
+     */
     bool AttemptToEvictConnection();
     CNode* ConnectNode(CAddress addrConnect, const char *pszDest, bool fCountFailure, ConnectionType conn_type) EXCLUSIVE_LOCKS_REQUIRED(!m_unused_i2p_sessions_mutex);
     void AddWhitelistPermissionFlags(NetPermissionFlags& flags, const CNetAddr &addr) const;
