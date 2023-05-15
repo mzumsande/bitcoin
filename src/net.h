@@ -1075,7 +1075,12 @@ private:
      */
     bool AlreadyConnectedToAddress(const CAddress& addr);
 
-    bool AttemptToEvictConnection();
+    /**
+     * Try to find an inbound connection to evict when the node is full.
+     * @param[in] tx_relaying_peer Whether to only select full relay peers for eviction
+     * @return                     True if a node was marked for disconnect
+     */
+    bool AttemptToEvictConnection(bool tx_relaying_peer = false);
     CNode* ConnectNode(CAddress addrConnect, const char *pszDest, bool fCountFailure, ConnectionType conn_type) EXCLUSIVE_LOCKS_REQUIRED(!m_unused_i2p_sessions_mutex);
     void AddWhitelistPermissionFlags(NetPermissionFlags& flags, const CNetAddr &addr) const;
 

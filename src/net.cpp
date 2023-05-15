@@ -990,7 +990,7 @@ std::pair<size_t, bool> CConnman::SocketSendData(CNode& node) const
  *   to forge.  In order to partition a node the attacker must be
  *   simultaneously better at all of them than honest peers.
  */
-bool CConnman::AttemptToEvictConnection()
+bool CConnman::AttemptToEvictConnection(bool tx_relaying_peer)
 {
     std::vector<NodeEvictionCandidate> vEvictionCandidates;
     {
@@ -999,6 +999,9 @@ bool CConnman::AttemptToEvictConnection()
         for (const CNode* node : m_nodes) {
             if (node->fDisconnect)
                 continue;
+            if (tx_relaying_peer && !node->m_relays_txs) {
+                continue;
+            }
             NodeEvictionCandidate candidate{
                 .id = node->GetId(),
                 .m_connected = node->m_connected,
