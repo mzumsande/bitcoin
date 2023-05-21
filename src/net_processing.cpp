@@ -1204,6 +1204,9 @@ bool PeerManagerImpl::BlockRequested(NodeId nodeid, const CBlockIndex& block, st
         m_peers_downloading_from++;
     }
     auto itInFlight = mapBlocksInFlight.insert(std::make_pair(hash, std::make_pair(nodeid, it)));
+    if (mapBlocksInFlight.count(hash) > 1) {
+        LogPrintf("MZ: Downloading block %d from another peer %d, size=%d\n", hash.ToString(), nodeid, mapBlocksInFlight.count(hash));
+    }
     if (pit) {
         *pit = &itInFlight->second.second;
     }
@@ -4391,6 +4394,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                     // as long as it's first...
                     req.blockhash = pindex->GetBlockHash();
                     m_connman.PushMessage(&pfrom, msgMaker.Make(NetMsgType::GETBLOCKTXN, req));
+                    LogPrintf("MZ: requesting blocktxn %d of size %d from first peer %i\n", blockhash.ToString(), req.indexes.size(), pfrom.GetId());
                 } else if (pfrom.m_bip152_highbandwidth_to &&
                     (!nodestate->m_is_inbound ||
                     IsBlockRequestedFromOutbound(blockhash) ||
@@ -4401,6 +4405,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                     // - it's not the final parallel download slot (which we may reserve for first outbound)
                     req.blockhash = pindex->GetBlockHash();
                     m_connman.PushMessage(&pfrom, msgMaker.Make(NetMsgType::GETBLOCKTXN, req));
+                    LogPrintf("MZ: requesting blocktxn %d of size %d from another peer %i\n", blockhash.ToString(), req.indexes.size(), pfrom.GetId());
                 } else {
                     // Give up for this peer and wait for other peer(s)
                     RemoveBlockRequest(pindex->GetBlockHash(), pfrom.GetId());
@@ -4439,6 +4444,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         } // cs_main
 
         if (fProcessBLOCKTXN) {
+            LogPrintf("MZ: peer %d no need for BLOCKTXN, can reconstruct block %d immediately\n", pfrom.GetId(), blockhash.ToString());
             return ProcessMessage(pfrom, NetMsgType::BLOCKTXN, blockTxnMsg, time_received, interruptMsgProc);
         }
 
@@ -4571,6 +4577,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             // protections in the compact block handler -- see related comment
             // in compact block optimistic reconstruction handling.
             ProcessBlock(pfrom, pblock, /*force_processing=*/true, /*min_pow_checked=*/true);
+            LogPrintf("MZ: rec %d txns and reconstructed block from peer %d\n", resp.txn.size(), pfrom.GetId());
         }
         return;
     }
