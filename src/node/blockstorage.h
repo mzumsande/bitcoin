@@ -47,6 +47,7 @@ static const unsigned int MAX_BLOCKFILE_SIZE = 0x8000000; // 128 MiB
 static constexpr size_t BLOCK_SERIALIZATION_HEADER_SIZE = CMessageHeader::MESSAGE_START_SIZE + sizeof(unsigned int);
 
 extern std::atomic_bool fReindex;
+extern std::atomic_bool fRepairBlocksDir;
 extern std::atomic_bool g_indexes_ready_to_sync;
 
 // Because validation code takes pointers to the map's CBlockIndex objects, if
@@ -207,7 +208,7 @@ public:
     [[nodiscard]] uint64_t GetPruneTarget() const { return m_opts.prune_target; }
     static constexpr auto PRUNE_TARGET_MANUAL{std::numeric_limits<uint64_t>::max()};
 
-    [[nodiscard]] bool LoadingBlocks() const { return m_importing || fReindex; }
+    [[nodiscard]] bool LoadingBlocks() const { return m_importing || fReindex || fRepairBlocksDir; }
 
     [[nodiscard]] bool StopAfterBlockImport() const { return m_opts.stop_after_block_import; }
 
