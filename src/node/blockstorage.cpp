@@ -54,6 +54,16 @@ bool CBlockIndexHeightOnlyComparator::operator()(const CBlockIndex* pa, const CB
     return pa->nHeight < pb->nHeight;
 }
 
+bool CBlockIndexFileComparator::operator()(const CBlockIndex* pa, const CBlockIndex* pb) const
+{
+    // Sort first by file number, then by position
+    if (pa->nFile > pb->nFile) return false;
+    if (pa->nFile < pb->nFile) return true;
+
+    return pa->nDataPos > pb->nDataPos;
+}
+
+
 std::vector<CBlockIndex*> BlockManager::GetAllBlockIndices()
 {
     AssertLockHeld(cs_main);
@@ -876,6 +886,22 @@ void ThreadImport(ChainstateManager& chainman, std::vector<fs::path> vImportFile
     {
         ImportingNow imp{chainman.m_blockman.m_importing};
 
+        // -repair-blocksdir
+        if (fRepairBlocksDir) {
+            std::vector<CBlockIndex*> corrupted;
+            std::vector<CBlockIndex*> indexes_by_file{chainman.m_blockman.GetAllBlockIndices()};
+            std::sort(indexes_by_file.begin(), indexes_by_file.end(),
+                      CBlockIndexHeightOnlyComparator());
+            for (auto index : indexes_by_file) {
+                CBlock block;
+                if (index->nStatus & BLOCK_HAVE_DATA && !chainman.m_blockman.ReadBlockFromDisk(block, *index)) {
+                    LogPrintf("MZ Repair Blocksindex: Corrupt Block in file=%d, height=%d, hash=%s \n", index->nFile, index->nHeight, index->GetBlockHash().ToString());
+                    corrupted.push_back(index);
+                }
+                // ToDo: also call non-contextual checks?
+            }
+
+        }
         // -reindex
         if (fReindex) {
             int nFile = 0;

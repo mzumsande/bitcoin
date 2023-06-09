@@ -65,6 +65,12 @@ struct CBlockIndexHeightOnlyComparator {
     bool operator()(const CBlockIndex* pa, const CBlockIndex* pb) const;
 };
 
+struct CBlockIndexFileComparator {
+    /* Compares by File number and then position */
+    bool operator()(const CBlockIndex* pa, const CBlockIndex* pb) const;
+};
+
+
 struct PruneLockInfo {
     int height_first{std::numeric_limits<int>::max()}; //! Height of earliest block that should be kept and not pruned
 };
