@@ -11,6 +11,7 @@
 #include <hash.h>
 #include <kernel/chainparams.h>
 #include <logging.h>
+#include <net_processing.h>
 #include <pow.h>
 #include <reverse_iterator.h>
 #include <shutdown.h>
@@ -878,7 +879,7 @@ public:
     }
 };
 
-void ThreadImport(ChainstateManager& chainman, std::vector<fs::path> vImportFiles, const fs::path& mempool_path)
+void ThreadImport(ChainstateManager& chainman, PeerManager& peerman, std::vector<fs::path> vImportFiles, const fs::path& mempool_path)
 {
     SetSyscallSandboxPolicy(SyscallSandboxPolicy::INITIALIZATION_LOAD_BLOCKS);
     ScheduleBatchPriority();

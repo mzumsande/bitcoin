@@ -1689,8 +1689,9 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         vImportFiles.push_back(fs::PathFromString(strFile));
     }
 
-    chainman.m_load_block = std::thread(&util::TraceThread, "loadblk", [=, &chainman, &args] {
-        ThreadImport(chainman, vImportFiles, ShouldPersistMempool(args) ? MempoolPath(args) : fs::path{});
+    PeerManager& peerman = *Assert(node.peerman);
+    chainman.m_load_block = std::thread(&util::TraceThread, "loadblk", [=, &chainman, &peerman, &args] {
+        ThreadImport(chainman, peerman, vImportFiles, ShouldPersistMempool(args) ? MempoolPath(args) : fs::path{});
     });
 
     // Wait for genesis block to be processed

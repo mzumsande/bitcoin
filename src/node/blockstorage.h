@@ -28,6 +28,7 @@ class CChain;
 class CChainParams;
 class Chainstate;
 class ChainstateManager;
+class PeerManager;
 struct CCheckpointData;
 struct FlatFilePos;
 namespace Consensus {
@@ -257,7 +258,7 @@ public:
     void CleanupBlockRevFiles() const;
 };
 
-void ThreadImport(ChainstateManager& chainman, std::vector<fs::path> vImportFiles, const fs::path& mempool_path);
+void ThreadImport(ChainstateManager& chainman, PeerManager& peerman, std::vector<fs::path> vImportFiles, const fs::path& mempool_path);
 } // namespace node
 
 #endif // BITCOIN_NODE_BLOCKSTORAGE_H
