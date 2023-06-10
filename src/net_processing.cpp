@@ -1778,8 +1778,7 @@ bool PeerManagerImpl::BlockRequestAllowed(const CBlockIndex* pindex)
 
 util::Result<NodeId> PeerManagerImpl::FetchBlock(std::optional<NodeId> op_peer_id, const CBlockIndex& block_index)
 {
-    if (m_chainman.m_blockman.LoadingBlocks()) return util::ErrorUntranslated("Loading blocks ...");
-
+    if (m_chainman.m_blockman.LoadingBlocks() && !m_chainman.m_blockman.RepairBlocks()) return util::ErrorUntranslated("Loading blocks ...");
     // Only allow fetching from limited peers if the block height is within the allowed window
     bool allow_limited_peers = false;
     const auto& active_chain = m_chainman.ActiveChainstate();
@@ -1824,7 +1823,6 @@ util::Result<NodeId> PeerManagerImpl::FetchBlock(std::optional<NodeId> op_peer_i
     // Construct message to request the block
     const uint256& hash{block_index.GetBlockHash()};
     std::vector<CInv> invs{CInv(MSG_BLOCK | MSG_WITNESS_FLAG, hash)};
-
     // Send block request message to the peer
     bool success = m_connman.ForNode(peer_id, [this, &invs](CNode* node) {
         const CNetMsgMaker msgMaker(node->GetCommonVersion());
@@ -4646,7 +4644,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     if (msg_type == NetMsgType::BLOCK)
     {
         // Ignore block received while importing
-        if (m_chainman.m_blockman.LoadingBlocks()) {
+        if (m_chainman.m_blockman.LoadingBlocks() && !m_chainman.m_blockman.RepairBlocks()) {
             LogPrint(BCLog::NET, "Unexpected block message received from peer %d\n", pfrom.GetId());
             return;
         }

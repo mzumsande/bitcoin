@@ -747,7 +747,6 @@ bool BlockManager::WriteUndoDataForBlock(const CBlockUndo& blockundo, BlockValid
         if (_pos.nFile < m_last_blockfile && static_cast<uint32_t>(block.nHeight) == m_blockfile_info[_pos.nFile].nHeightLast) {
             FlushUndoFile(_pos.nFile, true);
         }
-
         // update nUndoPos in block index
         block.nUndoPos = _pos.nPos;
         block.nStatus |= BLOCK_HAVE_UNDO;
@@ -902,6 +901,37 @@ void ThreadImport(ChainstateManager& chainman, PeerManager& peerman, std::vector
                 // ToDo: also call non-contextual checks?
             }
 
+            for (auto index: corrupted) {
+                bool finished{false};
+                CBlockUndo undo;
+                chainman.m_blockman.UndoReadFromDisk(undo, static_cast<const CBlockIndex&>(*index));
+
+                index->nStatus &= ~BLOCK_HAVE_DATA;
+                index->nStatus &= ~BLOCK_HAVE_UNDO;
+                index->nFile = 0;
+                index->nDataPos = 0;
+                index->nTx = 0;
+                while (!finished){
+                    LogPrintf("Trying to load corrupted block from peers %i\n", index->nStatus & BLOCK_HAVE_DATA);
+                    const auto& res = peerman.FetchBlock(std::nullopt, static_cast<const CBlockIndex&>(*index));
+                    if(res.has_value()) {
+                        LogPrintf("FetchBlock return %s\n", res.value());
+                    }
+                    std::this_thread::sleep_for(std::chrono::seconds{5}); //todo: improve sleep behavior
+                    if (index->nStatus & BLOCK_HAVE_DATA) {
+                        BlockValidationState state;
+                        bool res = chainman.m_blockman.WriteUndoDataForBlock(undo, state, *index);
+                        assert(res);
+                        finished = true;
+                    };
+                }
+                CBlock block;
+                LogPrintf("Loading corrupted block was successful:file=%d, height=%d, hash=%s \n", index->nFile, index->nHeight, index->GetBlockHash().ToString());
+                assert(chainman.m_blockman.ReadBlockFromDisk(block, *index));
+            }
+            LogPrintf("Stopping after blocksdir repair\n");
+            StartShutdown();
+            return;
         }
         // -reindex
         if (fReindex) {

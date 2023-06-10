@@ -216,6 +216,7 @@ public:
     static constexpr auto PRUNE_TARGET_MANUAL{std::numeric_limits<uint64_t>::max()};
 
     [[nodiscard]] bool LoadingBlocks() const { return m_importing || fReindex || fRepairBlocksDir; }
+    [[nodiscard]] bool RepairBlocks() const { return fRepairBlocksDir; }
 
     [[nodiscard]] bool StopAfterBlockImport() const { return m_opts.stop_after_block_import; }
 
