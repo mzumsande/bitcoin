@@ -700,8 +700,6 @@ public:
     {
         ServiceFlags nLocalServices = NODE_NONE;
         int nMaxConnections = 0;
-        int nMaxAddnode = 0;
-        int nMaxFeeler = 0;
         CClientUIInterface* uiInterface = nullptr;
         NetEventsInterface* m_msgproc = nullptr;
         BanMan* m_banman = nullptr;
@@ -732,9 +730,7 @@ public:
         m_max_outbound_full_relay = std::min(MAX_OUTBOUND_FULL_RELAY_CONNECTIONS, m_max_connections);
         m_max_outbound_block_relay = std::min(MAX_BLOCK_RELAY_ONLY_CONNECTIONS, m_max_connections - m_max_outbound_full_relay);
         m_use_addrman_outgoing = connOptions.m_use_addrman_outgoing;
-        nMaxAddnode = connOptions.nMaxAddnode;
-        nMaxFeeler = connOptions.nMaxFeeler;
-        m_max_outbound = m_max_outbound_full_relay + m_max_outbound_block_relay + nMaxFeeler;
+        m_max_outbound = m_max_outbound_full_relay + m_max_outbound_block_relay + m_max_feeler;
         m_client_interface = connOptions.uiInterface;
         m_banman = connOptions.m_banman;
         m_msgproc = connOptions.m_msgproc;
@@ -1102,8 +1098,10 @@ private:
     // We do not relay tx or addr messages with these peers
     int m_max_outbound_block_relay;
 
-    int nMaxAddnode;
-    int nMaxFeeler;
+    // Maximum number of manual connections (added with addnode)
+    int m_max_addnode{MAX_ADDNODE_CONNECTIONS};
+    // Maximum number of feeler connections
+    int m_max_feeler{MAX_FEELER_CONNECTIONS};
     int m_max_outbound;
     bool m_use_addrman_outgoing;
     CClientUIInterface* m_client_interface;

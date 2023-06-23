@@ -137,7 +137,6 @@ BOOST_AUTO_TEST_CASE(stale_tip_peer_management)
     constexpr int max_outbound_full_relay = MAX_OUTBOUND_FULL_RELAY_CONNECTIONS;
     CConnman::Options options;
     options.nMaxConnections = DEFAULT_MAX_PEER_CONNECTIONS;
-    options.nMaxFeeler = MAX_FEELER_CONNECTIONS;
 
     const auto time_init{GetTime<std::chrono::seconds>()};
     SetMockTime(time_init);

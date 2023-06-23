@@ -2357,7 +2357,7 @@ bool CConnman::Start(CScheduler& scheduler, const Options& connOptions)
     }
     if (semAddnode == nullptr) {
         // initialize semaphore
-        semAddnode = std::make_unique<CSemaphore>(nMaxAddnode);
+        semAddnode = std::make_unique<CSemaphore>(m_max_addnode);
     }
 
     //
@@ -2445,7 +2445,7 @@ void CConnman::Interrupt()
     }
 
     if (semAddnode) {
-        for (int i=0; i<nMaxAddnode; i++) {
+        for (int i=0; i<m_max_addnode; i++) {
             semAddnode->post();
         }
     }
