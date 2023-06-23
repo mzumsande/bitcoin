@@ -700,8 +700,6 @@ public:
     {
         ServiceFlags nLocalServices = NODE_NONE;
         int nMaxConnections = 0;
-        int m_max_outbound_full_relay = 0;
-        int m_max_outbound_block_relay = 0;
         int nMaxAddnode = 0;
         int nMaxFeeler = 0;
         CClientUIInterface* uiInterface = nullptr;
@@ -731,8 +729,8 @@ public:
 
         nLocalServices = connOptions.nLocalServices;
         m_max_connections = connOptions.nMaxConnections;
-        m_max_outbound_full_relay = std::min(connOptions.m_max_outbound_full_relay, connOptions.nMaxConnections);
-        m_max_outbound_block_relay = connOptions.m_max_outbound_block_relay;
+        m_max_outbound_full_relay = std::min(MAX_OUTBOUND_FULL_RELAY_CONNECTIONS, m_max_connections);
+        m_max_outbound_block_relay = std::min(MAX_BLOCK_RELAY_ONLY_CONNECTIONS, m_max_connections - m_max_outbound_full_relay);
         m_use_addrman_outgoing = connOptions.m_use_addrman_outgoing;
         nMaxAddnode = connOptions.nMaxAddnode;
         nMaxFeeler = connOptions.nMaxFeeler;
