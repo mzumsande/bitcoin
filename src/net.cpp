@@ -970,7 +970,7 @@ void CConnman::CreateNodeFromAcceptedSocket(std::unique_ptr<Sock>&& sock,
                                             const CAddress& addr)
 {
     int nInbound = 0;
-    int nMaxInbound = m_max_connections - m_max_outbound;
+    int nMaxInbound = m_max_connections - m_max_automatic_outbound;
 
     AddWhitelistPermissionFlags(permission_flags, addr);
     if (NetPermissions::HasFlag(permission_flags, NetPermissionFlags::Implicit)) {
@@ -2353,7 +2353,7 @@ bool CConnman::Start(CScheduler& scheduler, const Options& connOptions)
 
     if (semOutbound == nullptr) {
         // initialize semaphore
-        semOutbound = std::make_unique<CSemaphore>(std::min(m_max_outbound, m_max_connections));
+        semOutbound = std::make_unique<CSemaphore>(std::min(m_max_automatic_outbound, m_max_connections));
     }
     if (semAddnode == nullptr) {
         // initialize semaphore
@@ -2439,7 +2439,7 @@ void CConnman::Interrupt()
     InterruptSocks5(true);
 
     if (semOutbound) {
-        for (int i=0; i<m_max_outbound; i++) {
+        for (int i=0; i<m_max_automatic_outbound; i++) {
             semOutbound->post();
         }
     }
