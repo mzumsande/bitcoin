@@ -730,7 +730,7 @@ public:
         AssertLockNotHeld(m_total_bytes_sent_mutex);
 
         nLocalServices = connOptions.nLocalServices;
-        nMaxConnections = connOptions.nMaxConnections;
+        m_max_connections = connOptions.nMaxConnections;
         m_max_outbound_full_relay = std::min(connOptions.m_max_outbound_full_relay, connOptions.nMaxConnections);
         m_max_outbound_block_relay = connOptions.m_max_outbound_block_relay;
         m_use_addrman_outgoing = connOptions.m_use_addrman_outgoing;
@@ -1089,7 +1089,13 @@ private:
 
     std::unique_ptr<CSemaphore> semOutbound;
     std::unique_ptr<CSemaphore> semAddnode;
-    int nMaxConnections;
+
+    /**
+     * Maximum number of connections we permit. May be changed by the user
+     * from its default, and could be limited by the number of available file descriptors.
+     * Does not include manual connections, which are counted separately.
+     */
+    int m_max_connections;
 
     // How many full-relay (tx, block, addr) outbound peers we want
     int m_max_outbound_full_relay;
