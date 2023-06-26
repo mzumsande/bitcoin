@@ -726,11 +726,25 @@ public:
         AssertLockNotHeld(m_total_bytes_sent_mutex);
 
         nLocalServices = connOptions.nLocalServices;
-        m_max_connections = connOptions.nMaxConnections;
-        m_max_outbound_full_relay = std::min(MAX_OUTBOUND_FULL_RELAY_CONNECTIONS, m_max_connections);
-        m_max_outbound_block_relay = std::min(MAX_BLOCK_RELAY_ONLY_CONNECTIONS, m_max_connections - m_max_outbound_full_relay);
-        m_max_automatic_outbound = m_max_outbound_full_relay + m_max_outbound_block_relay + m_max_feeler;
-        m_max_inbound = m_max_connections - m_max_automatic_outbound;
+
+        int max_connections = connOptions.nMaxConnections;
+        int max_outbound_full_relay = std::min(MAX_OUTBOUND_FULL_RELAY_CONNECTIONS, max_connections);
+        int max_feeler{MAX_FEELER_CONNECTIONS};
+        int max_addnode{MAX_ADDNODE_CONNECTIONS};
+        int max_outbound_block_relay = std::min(MAX_BLOCK_RELAY_ONLY_CONNECTIONS, max_connections - max_outbound_full_relay);
+        int max_automatic_outbound = max_outbound_full_relay + max_outbound_block_relay + max_feeler;
+        int max_inbound = max_connections - max_automatic_outbound;
+
+        m_conn_limits = {
+            /* m_max_connections=*/max_connections,
+            /* m_max_outbound_full_relay=*/max_outbound_full_relay,
+            /* m_max_outbound_block_relay=*/max_outbound_block_relay,
+            /* m_max_addnode=*/max_addnode,
+            /* m_max_feeler=*/max_feeler,
+            /* m_max_automatic_outbound=*/max_automatic_outbound,
+            /* m_max_inbound=*/max_inbound,
+        };
+
         m_use_addrman_outgoing = connOptions.m_use_addrman_outgoing;
         m_client_interface = connOptions.uiInterface;
         m_banman = connOptions.m_banman;
@@ -1085,29 +1099,30 @@ private:
     std::unique_ptr<CSemaphore> semOutbound;
     std::unique_ptr<CSemaphore> semAddnode;
 
-    /**
-     * Maximum number of connections we permit. May be changed by the user
-     * from its default, and could be limited by the number of available file descriptors.
-     * Does not include manual connections, which are counted separately.
-     */
-    int m_max_connections;
+    struct ConnectionLimits {
+        /**
+         * Maximum number of connections we permit. May be changed by the user
+         * from its default, and could be limited by the number of available file descriptors.
+         * Does not include manual connections, which are counted separately.
+         */
+        int m_max_connections;
+        // How many full-relay (tx, block, addr) outbound peers we want
+        int m_max_outbound_full_relay;
+        // How many block-relay only outbound peers we want
+        // We do not relay tx or addr messages with these peers
+        int m_max_outbound_block_relay;
+        // Maximum number of manual connections (added with addnode)
+        int m_max_addnode;
+        // Maximum number of feeler connections
+        int m_max_feeler;
+        // Maximum number of automatic outbound connections. Does not apply to
+        // manual connections.
+        int m_max_automatic_outbound;
+        // Maximum number of inbound connections
+        int m_max_inbound;
+    };
 
-    // How many full-relay (tx, block, addr) outbound peers we want
-    int m_max_outbound_full_relay;
-
-    // How many block-relay only outbound peers we want
-    // We do not relay tx or addr messages with these peers
-    int m_max_outbound_block_relay;
-
-    // Maximum number of manual connections (added with addnode)
-    int m_max_addnode{MAX_ADDNODE_CONNECTIONS};
-    // Maximum number of feeler connections
-    int m_max_feeler{MAX_FEELER_CONNECTIONS};
-    // Maximum number of automatic outbound connections. Does not apply to
-    // manual connections.
-    int m_max_automatic_outbound;
-    // Maximum number of inbound connections
-    int m_max_inbound;
+    ConnectionLimits m_conn_limits;
 
     bool m_use_addrman_outgoing;
     CClientUIInterface* m_client_interface;

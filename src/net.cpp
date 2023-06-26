@@ -1015,13 +1015,13 @@ void CConnman::CreateNodeFromAcceptedSocket(std::unique_ptr<Sock>&& sock,
 
     // Only accept connections from discouraged peers if our inbound slots aren't (almost) full.
     bool discouraged = m_banman && m_banman->IsDiscouraged(addr);
-    if (!NetPermissions::HasFlag(permission_flags, NetPermissionFlags::NoBan) && nInbound + 1 >= m_max_inbound && discouraged)
+    if (!NetPermissions::HasFlag(permission_flags, NetPermissionFlags::NoBan) && nInbound + 1 >= m_conn_limits.m_max_inbound && discouraged)
     {
         LogPrint(BCLog::NET, "connection from %s dropped (discouraged)\n", addr.ToStringAddrPort());
         return;
     }
 
-    if (nInbound >= m_max_inbound)
+    if (nInbound >= m_conn_limits.m_max_inbound)
     {
         if (!AttemptToEvictConnection()) {
             // No connection to evict, disconnect the new connection
@@ -1076,10 +1076,10 @@ bool CConnman::AddConnection(const std::string& address, ConnectionType conn_typ
     case ConnectionType::MANUAL:
         return false;
     case ConnectionType::OUTBOUND_FULL_RELAY:
-        max_connections = m_max_outbound_full_relay;
+        max_connections = m_conn_limits.m_max_outbound_full_relay;
         break;
     case ConnectionType::BLOCK_RELAY:
-        max_connections = m_max_outbound_block_relay;
+        max_connections = m_conn_limits.m_max_outbound_block_relay;
         break;
     // no limit for ADDR_FETCH because -seednode has no limit either
     case ConnectionType::ADDR_FETCH:
@@ -1573,7 +1573,7 @@ int CConnman::GetExtraFullOutboundCount() const
             }
         }
     }
-    return std::max(full_outbound_peers - m_max_outbound_full_relay, 0);
+    return std::max(full_outbound_peers - m_conn_limits.m_max_outbound_full_relay, 0);
 }
 
 int CConnman::GetExtraBlockRelayCount() const
@@ -1587,7 +1587,7 @@ int CConnman::GetExtraBlockRelayCount() const
             }
         }
     }
-    return std::max(block_relay_peers - m_max_outbound_block_relay, 0);
+    return std::max(block_relay_peers - m_conn_limits.m_max_outbound_block_relay, 0);
 }
 
 std::unordered_set<Network> CConnman::GetReachableEmptyNetworks() const
@@ -1757,12 +1757,12 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
         // block-relay-only peer (to confirm our tip is current, see below) or the next_feeler
         // timer to decide if we should open a FEELER.
 
-        if (!m_anchors.empty() && (nOutboundBlockRelay < m_max_outbound_block_relay)) {
+        if (!m_anchors.empty() && (nOutboundBlockRelay < m_conn_limits.m_max_outbound_block_relay)) {
             conn_type = ConnectionType::BLOCK_RELAY;
             anchor = true;
-        } else if (nOutboundFullRelay < m_max_outbound_full_relay) {
+        } else if (nOutboundFullRelay < m_conn_limits.m_max_outbound_full_relay) {
             // OUTBOUND_FULL_RELAY
-        } else if (nOutboundBlockRelay < m_max_outbound_block_relay) {
+        } else if (nOutboundBlockRelay < m_conn_limits.m_max_outbound_block_relay) {
             conn_type = ConnectionType::BLOCK_RELAY;
         } else if (GetTryNewOutboundPeer()) {
             // OUTBOUND_FULL_RELAY
@@ -1898,7 +1898,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
             // different netgroups in ipv4/ipv6 networks + all peers in Tor/I2P/CJDNS networks.
             // Don't record addrman failure attempts when node is offline. This can be identified since all local
             // network connections (if any) belong in the same netgroup, and the size of `outbound_ipv46_peer_netgroups` would only be 1.
-            const bool count_failures{((int)outbound_ipv46_peer_netgroups.size() + outbound_privacy_network_peers) >= std::min(m_max_connections - 1, 2)};
+            const bool count_failures{((int)outbound_ipv46_peer_netgroups.size() + outbound_privacy_network_peers) >= std::min(m_conn_limits.m_max_connections - 1, 2)};
             OpenNetworkConnection(addrConnect, count_failures, &grant, /*strDest=*/nullptr, conn_type);
         }
     }
@@ -2352,11 +2352,11 @@ bool CConnman::Start(CScheduler& scheduler, const Options& connOptions)
 
     if (semOutbound == nullptr) {
         // initialize semaphore
-        semOutbound = std::make_unique<CSemaphore>(std::min(m_max_automatic_outbound, m_max_connections));
+        semOutbound = std::make_unique<CSemaphore>(std::min(m_conn_limits.m_max_automatic_outbound, m_conn_limits.m_max_connections));
     }
     if (semAddnode == nullptr) {
         // initialize semaphore
-        semAddnode = std::make_unique<CSemaphore>(m_max_addnode);
+        semAddnode = std::make_unique<CSemaphore>(m_conn_limits.m_max_addnode);
     }
 
     //
@@ -2438,13 +2438,13 @@ void CConnman::Interrupt()
     InterruptSocks5(true);
 
     if (semOutbound) {
-        for (int i=0; i<m_max_automatic_outbound; i++) {
+        for (int i=0; i<m_conn_limits.m_max_automatic_outbound; i++) {
             semOutbound->post();
         }
     }
 
     if (semAddnode) {
-        for (int i=0; i<m_max_addnode; i++) {
+        for (int i=0; i<m_conn_limits.m_max_addnode; i++) {
             semAddnode->post();
         }
     }
