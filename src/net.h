@@ -730,6 +730,7 @@ public:
         m_max_outbound_full_relay = std::min(MAX_OUTBOUND_FULL_RELAY_CONNECTIONS, m_max_connections);
         m_max_outbound_block_relay = std::min(MAX_BLOCK_RELAY_ONLY_CONNECTIONS, m_max_connections - m_max_outbound_full_relay);
         m_max_automatic_outbound = m_max_outbound_full_relay + m_max_outbound_block_relay + m_max_feeler;
+        m_max_inbound = m_max_connections - m_max_automatic_outbound;
         m_use_addrman_outgoing = connOptions.m_use_addrman_outgoing;
         m_client_interface = connOptions.uiInterface;
         m_banman = connOptions.m_banman;
@@ -1105,6 +1106,8 @@ private:
     // Maximum number of automatic outbound connections. Does not apply to
     // manual connections.
     int m_max_automatic_outbound;
+    // Maximum number of inbound connections
+    int m_max_inbound;
 
     bool m_use_addrman_outgoing;
     CClientUIInterface* m_client_interface;
