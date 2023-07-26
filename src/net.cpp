@@ -180,27 +180,6 @@ bool GetLocal(CService& addr, const CNode& peer)
     return nBestScore >= 0;
 }
 
-//! Convert the serialized seeds into usable address objects.
-static std::vector<CAddress> ConvertSeeds(const std::vector<uint8_t> &vSeedsIn)
-{
-    // It'll only connect to one or two seed nodes because once it connects,
-    // it'll get a pile of addresses with newer timestamps.
-    // Seed nodes are given a random 'last seen time' of between one and two
-    // weeks ago.
-    const auto one_week{7 * 24h};
-    std::vector<CAddress> vSeedsOut;
-    FastRandomContext rng;
-    CDataStream s(vSeedsIn, SER_NETWORK, PROTOCOL_VERSION | ADDRV2_FORMAT);
-    while (!s.eof()) {
-        CService endpoint;
-        s >> endpoint;
-        CAddress addr{endpoint, GetDesirableServiceFlags(NODE_NONE)};
-        addr.nTime = rng.rand_uniform_delay(Now<NodeSeconds>() - one_week, -one_week);
-        LogPrint(BCLog::NET, "Added hardcoded seed: %s\n", addr.ToStringAddrPort());
-        vSeedsOut.push_back(addr);
-    }
-    return vSeedsOut;
-}
 
 // get best local address for a particular peer as a CAddress
 // Otherwise, return the unroutable 0.0.0.0 but filled in with
@@ -1607,7 +1586,22 @@ std::unordered_set<Network> CConnman::GetReachableEmptyNetworks() const
 
 void CConnman::LoadFixedSeeds(const std::unordered_set<Network> fixed_seed_networks) const
 {
-    std::vector<CAddress> seed_addrs{ConvertSeeds(Params().FixedSeeds())};
+    // It'll only connect to one or two seed nodes because once it connects,
+    // it'll get a pile of addresses with newer timestamps.
+    // Seed nodes are given a random 'last seen time' of between one and two
+    // weeks ago.
+    const auto one_week{7 * 24h};
+    std::vector<CAddress> seed_addrs;
+    FastRandomContext rng;
+    CDataStream s(Params().FixedSeeds(), SER_NETWORK, PROTOCOL_VERSION | ADDRV2_FORMAT);
+    while (!s.eof()) {
+        CService endpoint;
+        s >> endpoint;
+        CAddress addr{endpoint, GetDesirableServiceFlags(NODE_NONE)};
+        addr.nTime = rng.rand_uniform_delay(Now<NodeSeconds>() - one_week, -one_week);
+        LogPrint(BCLog::NET, "Added hardcoded seed: %s\n", addr.ToStringAddrPort());
+        seed_addrs.push_back(addr);
+    }
     // We will not make outgoing connections to peers that are unreachable
     // (e.g. because of -onlynet configuration).
     // Therefore, we do not add them to addrman in the first place.
