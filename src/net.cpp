@@ -1605,6 +1605,24 @@ std::unordered_set<Network> CConnman::GetReachableEmptyNetworks() const
     return networks;
 }
 
+void CConnman::LoadFixedSeeds(const std::unordered_set<Network> fixed_seed_networks) const
+{
+    std::vector<CAddress> seed_addrs{ConvertSeeds(Params().FixedSeeds())};
+    // We will not make outgoing connections to peers that are unreachable
+    // (e.g. because of -onlynet configuration).
+    // Therefore, we do not add them to addrman in the first place.
+    // In case previously unreachable networks become reachable
+    // (e.g. in case of -onlynet changes by the user), fixed seeds will
+    // be loaded only for networks for which we have no addresses.
+    seed_addrs.erase(std::remove_if(seed_addrs.begin(), seed_addrs.end(),
+                                    [&fixed_seed_networks](const CAddress& addr) { return fixed_seed_networks.count(addr.GetNetwork()) == 0; }),
+                     seed_addrs.end());
+    CNetAddr local;
+    local.SetInternal("fixedseeds");
+    addrman.Add(seed_addrs, local);
+    LogPrintf("Added %d fixed seeds from reachable networks.\n", seed_addrs.size());
+}
+
 void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
 {
     AssertLockNotHeld(m_unused_i2p_sessions_mutex);
@@ -1677,21 +1695,8 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
             }
 
             if (add_fixed_seeds_now) {
-                std::vector<CAddress> seed_addrs{ConvertSeeds(Params().FixedSeeds())};
-                // We will not make outgoing connections to peers that are unreachable
-                // (e.g. because of -onlynet configuration).
-                // Therefore, we do not add them to addrman in the first place.
-                // In case previously unreachable networks become reachable
-                // (e.g. in case of -onlynet changes by the user), fixed seeds will
-                // be loaded only for networks for which we have no addresses.
-                seed_addrs.erase(std::remove_if(seed_addrs.begin(), seed_addrs.end(),
-                                                [&fixed_seed_networks](const CAddress& addr) { return fixed_seed_networks.count(addr.GetNetwork()) == 0; }),
-                                 seed_addrs.end());
-                CNetAddr local;
-                local.SetInternal("fixedseeds");
-                addrman.Add(seed_addrs, local);
+                LoadFixedSeeds(fixed_seed_networks);
                 add_fixed_seeds = false;
-                LogPrintf("Added %d fixed seeds from reachable networks.\n", seed_addrs.size());
             }
         }
 

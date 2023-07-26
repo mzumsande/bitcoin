@@ -1010,6 +1010,8 @@ private:
      */
     std::vector<CAddress> GetCurrentBlockRelayOnlyConns() const;
 
+    void LoadFixedSeeds(const std::unordered_set<Network> fixed_seed_networks) const;
+
     // Whether the node should be passed out in ForEach* callbacks
     static bool NodeFullyConnected(const CNode* pnode);
 
