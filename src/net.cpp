@@ -1597,20 +1597,20 @@ void CConnman::LoadFixedSeeds(const std::unordered_set<Network> fixed_seed_netwo
     while (!s.eof()) {
         CService endpoint;
         s >> endpoint;
+        // We will not make outgoing connections to peers that are unreachable
+        // (e.g. because of -onlynet configuration).
+        // Therefore, we do not add them to addrman in the first place.
+        // In case previously unreachable networks become reachable
+        // (e.g. in case of -onlynet changes by the user), fixed seeds will
+        // be loaded only for networks for which we have no addresses.
+        Network net = endpoint.GetNetwork();
+        if (fixed_seed_networks.count(net) == 0) continue;
+
         CAddress addr{endpoint, GetDesirableServiceFlags(NODE_NONE)};
         addr.nTime = rng.rand_uniform_delay(Now<NodeSeconds>() - one_week, -one_week);
         LogPrint(BCLog::NET, "Added hardcoded seed: %s\n", addr.ToStringAddrPort());
         seed_addrs.push_back(addr);
     }
-    // We will not make outgoing connections to peers that are unreachable
-    // (e.g. because of -onlynet configuration).
-    // Therefore, we do not add them to addrman in the first place.
-    // In case previously unreachable networks become reachable
-    // (e.g. in case of -onlynet changes by the user), fixed seeds will
-    // be loaded only for networks for which we have no addresses.
-    seed_addrs.erase(std::remove_if(seed_addrs.begin(), seed_addrs.end(),
-                                    [&fixed_seed_networks](const CAddress& addr) { return fixed_seed_networks.count(addr.GetNetwork()) == 0; }),
-                     seed_addrs.end());
     CNetAddr local;
     local.SetInternal("fixedseeds");
     addrman.Add(seed_addrs, local);
