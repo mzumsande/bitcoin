@@ -1591,7 +1591,7 @@ void CConnman::LoadFixedSeeds(const std::unordered_set<Network> fixed_seed_netwo
     // Seed nodes are given a random 'last seen time' of between one and two
     // weeks ago.
     const auto one_week{7 * 24h};
-    std::vector<CAddress> seed_addrs;
+    std::unordered_map<Network, std::vector<CAddress>> seed_addrs;
     FastRandomContext rng;
     CDataStream s(Params().FixedSeeds(), SER_NETWORK, PROTOCOL_VERSION | ADDRV2_FORMAT);
     while (!s.eof()) {
@@ -1609,12 +1609,16 @@ void CConnman::LoadFixedSeeds(const std::unordered_set<Network> fixed_seed_netwo
         CAddress addr{endpoint, GetDesirableServiceFlags(NODE_NONE)};
         addr.nTime = rng.rand_uniform_delay(Now<NodeSeconds>() - one_week, -one_week);
         LogPrint(BCLog::NET, "Added hardcoded seed: %s\n", addr.ToStringAddrPort());
-        seed_addrs.push_back(addr);
+        seed_addrs[net].push_back(addr);
     }
-    CNetAddr local;
-    local.SetInternal("fixedseeds");
-    addrman.Add(seed_addrs, local);
-    LogPrintf("Added %d fixed seeds from reachable networks.\n", seed_addrs.size());
+    int n_added{0};
+    for(auto entry: seed_addrs) {
+        CNetAddr local;
+        local.SetInternal("fixedseeds_" + GetNetworkName(entry.first));
+        addrman.Add(entry.second, local);
+        n_added += entry.second.size();
+    }
+    LogPrintf("Added %d fixed seeds from reachable networks.\n", n_added);
 }
 
 void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
