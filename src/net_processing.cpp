@@ -3189,6 +3189,12 @@ void PeerManagerImpl::ProcessGetCFCheckPt(CNode& node, Peer& peer, CDataStream& 
 void PeerManagerImpl::ProcessBlock(CNode& node, const std::shared_ptr<const CBlock>& block, bool force_processing, bool min_pow_checked)
 {
     bool new_block{false};
+
+    const CBlockIndex* pindex = m_chainman.m_blockman.LookupBlockIndex(block->GetHash());
+    if (pindex && (pindex->nStatus & BLOCK_HAVE_DATA)) {
+        LogPrint(BCLog::NET, "Ignore duplicate for a block already saved on disk by peer %i\n", node.GetId());
+        return;
+    }
     m_chainman.ProcessNewBlock(block, force_processing, min_pow_checked, &new_block);
     if (new_block) {
         node.m_last_block_time = GetTime<std::chrono::seconds>();
