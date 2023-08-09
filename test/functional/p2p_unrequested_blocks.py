@@ -159,6 +159,14 @@ class AcceptBlockTest(BitcoinTestFramework):
         self.nodes[0].getblock(block_h3.hash)
         self.log.info("Unrequested more-work block accepted")
 
+        # Now send a mutated version of the same block with another peer.
+        # Currently, the first peer gets punished for this
+        block_h3.vtx[0].vout[0].scriptPubKey = b'XXX'
+        bad_node = self.nodes[0].add_p2p_connection(P2PInterface())
+        bad_node.send_and_ping(msg_block(block_h3))
+        test_node.wait_for_disconnect()
+        test_node = self.nodes[0].add_p2p_connection(P2PInterface())
+
         # 4c. Now mine 288 more blocks and deliver; all should be processed but
         # the last (height-too-high) on node (as long as it is not missing any headers)
         tip = block_h3
