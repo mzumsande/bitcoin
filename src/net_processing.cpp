@@ -4770,6 +4770,11 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             }
             pfrom.m_bloom_filter_loaded = true;
             pfrom.m_relays_txs = true;
+            if( !m_connman->EvictTxPeerIfFull() ) {
+                // We don't have room for another tx-relay peer, disconnect
+                LogPrint(BCLog::NET, "filterload received, but no capacity for another tx-relaying peer. peer=%d; disconnecting\n", pfrom.GetId());
+                prom.fDisconnect = true;
+            };
         }
         return;
     }
@@ -4818,6 +4823,11 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         }
         pfrom.m_bloom_filter_loaded = false;
         pfrom.m_relays_txs = true;
+        if( !m_connman->EvictTxPeerIfFull() ) {
+            // We don't have room for another tx-relay peer, disconnect
+            LogPrint(BCLog::NET, "filterload received, but no capacity for another tx-relaying peer. peer=%d; disconnecting\n", pfrom.GetId());
+            prom.fDisconnect = true;
+        };
         return;
     }
 
