@@ -736,7 +736,10 @@ class TestNode():
             p2p_conn.wait_until(lambda: p2p_conn.message_count["version"] == 1, check_connected=False)
             p2p_conn.wait_until(lambda: not p2p_conn.is_connected, check_connected=False)
         else:
-            p2p_conn.wait_for_connect()
+            if reconnect:
+                p2p_conn.wait_for_reconnect()
+            else:
+                p2p_conn.wait_for_connect()
             self.p2ps.append(p2p_conn)
 
             p2p_conn.wait_until(lambda: not p2p_conn.on_connection_send_msg)
