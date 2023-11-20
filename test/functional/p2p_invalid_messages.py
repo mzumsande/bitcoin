@@ -109,6 +109,9 @@ class InvalidMessagesTest(BitcoinTestFramework):
         self.nodes[0].disconnect_p2ps()
 
     def test_magic_bytes(self):
+        # Skip with v2, magic bytes are v1-specific
+        if self.options.v2transport:
+            return
         self.log.info("Test message with invalid magic bytes disconnects peer")
         conn = self.nodes[0].add_p2p_connection(P2PDataStore())
         with self.nodes[0].assert_debug_log(['Header error: Wrong MessageStart ffffffff received']):
@@ -120,6 +123,9 @@ class InvalidMessagesTest(BitcoinTestFramework):
         self.nodes[0].disconnect_p2ps()
 
     def test_checksum(self):
+        # Skip with v2, checksums are v1-specific
+        if self.options.v2transport:
+            return
         self.log.info("Test message with invalid checksum logs an error")
         conn = self.nodes[0].add_p2p_connection(P2PDataStore())
         with self.nodes[0].assert_debug_log(['Header error: Wrong checksum (badmsg, 2 bytes), expected 78df0a04 was ffffffff']):
@@ -137,7 +143,11 @@ class InvalidMessagesTest(BitcoinTestFramework):
     def test_size(self):
         self.log.info("Test message with oversized payload disconnects peer")
         conn = self.nodes[0].add_p2p_connection(P2PDataStore())
-        with self.nodes[0].assert_debug_log(['Header error: Size too large (badmsg, 4000001 bytes)']):
+        error_msg = (
+            ['V2 transport error: packet too large (4000014 bytes)'] if self.options.v2transport
+            else ['Header error: Size too large (badmsg, 4000001 bytes)']
+        )
+        with self.nodes[0].assert_debug_log(error_msg):
             msg = msg_unrecognized(str_data="d" * (VALID_DATA_LIMIT + 1))
             msg = conn.build_message(msg)
             conn.send_raw_message(msg)
@@ -145,6 +155,10 @@ class InvalidMessagesTest(BitcoinTestFramework):
         self.nodes[0].disconnect_p2ps()
 
     def test_msgtype(self):
+        # Skip with v2 for now, we can't first encrypt the msg and then manipulate it.
+        # TODO: maybe adjust to v2 logic
+        if self.options.v2transport:
+            return
         self.log.info("Test message with invalid message type logs an error")
         conn = self.nodes[0].add_p2p_connection(P2PDataStore())
         with self.nodes[0].assert_debug_log(['Header error: Invalid message type']):
@@ -305,6 +319,15 @@ class InvalidMessagesTest(BitcoinTestFramework):
         self.nodes[0].disconnect_p2ps()
 
     def test_resource_exhaustion(self):
+        # Skip with v2 - the non-optimised encryption requires several seconds just to encrypt each
+        # message, so this doesn't stress the node but the test framework
+        # Also, there is a problem with the node sending pings (and the python p2p thread answering them)
+        # while this thread encrypts a message, resulting in encryption failure).
+        # The last thing seems to be a general problem with this tests and others
+        # (that just doesn't happen by chance because pings are rare?),
+        # how should we deal with it?
+        if self.options.v2transport:
+            return
         self.log.info("Test node stays up despite many large junk messages")
         conn = self.nodes[0].add_p2p_connection(P2PDataStore())
         conn2 = self.nodes[0].add_p2p_connection(P2PDataStore())
