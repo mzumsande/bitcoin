@@ -85,6 +85,7 @@ from test_framework.v2_p2p import (
     GetShortIDFromMessageType,
     SHORTID,
 )
+from test_framework.logging_lock import LogLock
 
 logger = logging.getLogger("TestFramework.p2p")
 
@@ -164,7 +165,7 @@ class P2PConnection(asyncio.Protocol):
         # The underlying transport of the connection.
         # Should only call methods on this from the NetworkThread, c.f. call_soon_threadsafe
         self._transport = None
-        self._send_lock = threading.Lock()
+        self._send_lock = LogLock("send_lock")
         self.v2_state = None  # EncryptedP2PState object needed for v2 p2p connections
         self.supports_v2_p2p = False  # set if the connection supports v2 p2p
         self.reconnect = False  # set if reconnection needs to happen
@@ -704,8 +705,8 @@ class P2PInterface(P2PConnection):
 # P2PConnection acquires this lock whenever delivering a message to a P2PInterface.
 # This lock should be acquired in the thread running the test logic to synchronize
 # access to any data shared with the P2PInterface or P2PConnection.
-p2p_lock = threading.Lock()
-
+#p2p_lock = threading.Lock()
+p2p_lock = LogLock("p2p_lock")
 
 class NetworkThread(threading.Thread):
     network_event_loop = None
