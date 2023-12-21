@@ -4835,17 +4835,24 @@ void ChainstateManager::CheckBlockIndex()
     }
 
     // Build forward-pointing map of the entire block tree.
-    std::multimap<CBlockIndex*,CBlockIndex*> forward;
+    std::unordered_map<CBlockIndex*, std::vector<CBlockIndex*>> forward;
     for (auto& [_, block_index] : m_blockman.m_block_index) {
-        forward.emplace(block_index.pprev, &block_index);
+        const auto it = forward.find(block_index.pprev);
+        if (it == forward.end()) {
+            forward[block_index.pprev] = {&block_index};
+        }
+        else {
+            it->second.push_back(&block_index);
+        }
     }
 
-    assert(forward.size() == m_blockman.m_block_index.size());
+    //assert(forward.size() == m_blockman.m_block_index.size()); //this check is no longer valid
 
-    std::pair<std::multimap<CBlockIndex*,CBlockIndex*>::iterator,std::multimap<CBlockIndex*,CBlockIndex*>::iterator> rangeGenesis = forward.equal_range(nullptr);
-    CBlockIndex *pindex = rangeGenesis.first->second;
-    rangeGenesis.first++;
-    assert(rangeGenesis.first == rangeGenesis.second); // There is only one index entry with parent nullptr.
+    auto genesis = forward.find(nullptr)->second.begin();
+
+    CBlockIndex *pindex = *genesis;
+    genesis++;
+    assert(genesis == forward.find(nullptr)->second.end()); // There is only one index entry with parent nullptr.
 
     // Iterate over the entire block tree, using depth-first search.
     // Along the way, remember whether there are blocks on the path from genesis
@@ -5022,10 +5029,10 @@ void ChainstateManager::CheckBlockIndex()
         // End: actual consistency checks.
 
         // Try descending into the first subnode.
-        std::pair<std::multimap<CBlockIndex*,CBlockIndex*>::iterator,std::multimap<CBlockIndex*,CBlockIndex*>::iterator> range = forward.equal_range(pindex);
-        if (range.first != range.second) {
+        auto subnode = forward.find(pindex);
+        if (subnode != forward.end()) {
             // A subnode was found.
-            pindex = range.first->second;
+            pindex = subnode->second.front();
             nHeight++;
             continue;
         }
@@ -5045,16 +5052,15 @@ void ChainstateManager::CheckBlockIndex()
             // Find our parent.
             CBlockIndex* pindexPar = pindex->pprev;
             // Find which child we just visited.
-            std::pair<std::multimap<CBlockIndex*,CBlockIndex*>::iterator,std::multimap<CBlockIndex*,CBlockIndex*>::iterator> rangePar = forward.equal_range(pindexPar);
-            while (rangePar.first->second != pindex) {
-                assert(rangePar.first != rangePar.second); // Our parent must have at least the node we're coming from as child.
-                rangePar.first++;
-            }
-            // Proceed to the next one.
-            rangePar.first++;
-            if (rangePar.first != rangePar.second) {
+            auto rangePar = forward.find(pindexPar);
+            assert(rangePar != forward.end());
+            auto children = rangePar->second;
+            auto child = std::find(children.begin(), children.end(), pindex); //child we just processed
+            assert(child != children.end());
+            child++;
+            if (child != children.end()) {
                 // Move to the sibling.
-                pindex = rangePar.first->second;
+                pindex = *child;
                 break;
             } else {
                 // Move up further.
@@ -5066,7 +5072,7 @@ void ChainstateManager::CheckBlockIndex()
     }
 
     // Check that we actually traversed the entire map.
-    assert(nNodes == forward.size());
+    assert(nNodes == m_blockman.m_block_index.size());
 }
 
 std::string Chainstate::ToString()
