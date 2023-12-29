@@ -36,14 +36,18 @@ public:
 
     /// Number of elements in `Direction`.
     static constexpr size_t NUM_DIRECTIONS{2};
+    static constexpr size_t NUM_TXRELAY{2};
 
     // Innermost array
     using MsgStatArray = std::array<MsgStat, NUM_NET_MESSAGE_TYPES + 1>; // Add 1 for "Other" message type
 
     // Second innermost array
-    using ConnectionTypeArray = std::array<MsgStatArray, NUM_CONNECTION_TYPES>;
+    using TxRelayArray = std::array<MsgStatArray, NUM_TXRELAY>;
 
     // Third innermost array
+    using ConnectionTypeArray = std::array<TxRelayArray, NUM_CONNECTION_TYPES>;
+
+    // Fourth innermost array
     using NetMaxArray = std::array<ConnectionTypeArray, NET_MAX>;
 
     // Outer array
@@ -56,16 +60,19 @@ public:
         for (std::size_t direction_index = 0; direction_index < NUM_DIRECTIONS; direction_index++) {
             for (int network_index = 0; network_index < NET_MAX; network_index++) {
                 for (std::size_t connection_index = 0; connection_index < NUM_CONNECTION_TYPES; connection_index++) {
-                    for (std::size_t message_index = 0; message_index < NUM_NET_MESSAGE_TYPES + 1; message_index++) {
-                        // +1 for the "other" message type
-                        auto& stat = m_data
-                            .at(direction_index)
-                            .at(network_index)
-                            .at(connection_index)
-                            .at(message_index);
+                    for (std::size_t txrelay_index = 0; txrelay_index < NUM_TXRELAY; txrelay_index++) {
+                        for (std::size_t message_index = 0; message_index < NUM_NET_MESSAGE_TYPES + 1; message_index++) {
+                            // +1 for the "other" message type
+                            auto& stat = m_data
+                                .at(direction_index)
+                                .at(network_index)
+                                .at(connection_index)
+                                .at(txrelay_index)
+                                .at(message_index);
 
-                        stat.msg_count = 0;
-                        stat.byte_count = 0;
+                            stat.msg_count = 0;
+                            stat.byte_count = 0;
+                        }
                     }
                 }
             }
@@ -78,6 +85,7 @@ public:
     void Record(Direction direction,
                 Network net,
                 ConnectionType conn_type,
+                bool relays_tx,
                 const std::string& msg_type,
                 size_t byte_count);
 
@@ -89,14 +97,17 @@ public:
     [[nodiscard]] static Direction DirectionFromIndex(size_t index);
     [[nodiscard]] static Network NetworkFromIndex(size_t index);
     [[nodiscard]] static ConnectionType ConnectionTypeFromIndex(size_t index);
+    [[nodiscard]] static bool TxRelayFromIndex(size_t index);
 
     static std::string DirectionAsString(Direction direction);
+    static std::string GetTxRelay(size_t tx_relay);
 
 private:
     // Helper methods to make sure the indexes associated with enums are reliable
     [[nodiscard]] static size_t DirectionToIndex(Direction direction);
     [[nodiscard]] static size_t NetworkToIndex(Network net);
     [[nodiscard]] static size_t ConnectionTypeToIndex(ConnectionType conn_type);
+    [[nodiscard]] static size_t TxRelayToIndex(bool tx_relay);
 };
 
 #endif // BITCOIN_NETSTATS_H

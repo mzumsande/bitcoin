@@ -602,6 +602,7 @@ enum class DimensionType {
     DIRECTION,
     MESSAGE_TYPE,
     NETWORK_TYPE,
+    TX_RELAY,
     NONE,
 };
 
@@ -615,6 +616,8 @@ DimensionType StringToDimensionType(std::string dimension)
         return DimensionType::NETWORK_TYPE;
     } else if (dimension == "direction") {
         return DimensionType::DIRECTION;
+    } else if (dimension == "txrelay") {
+        return DimensionType::TX_RELAY;
     }
 
     return DimensionType::NONE;
@@ -739,60 +742,65 @@ UniValue Aggregate(const std::vector<DimensionType>& dimensions, const NetStats:
     for (std::size_t direction_i = 0; direction_i < NetStats::NUM_DIRECTIONS; direction_i++) {
         for (int network_i = 0; network_i < NET_MAX; network_i++) {
             for (std::size_t connection_i = 0; connection_i < NUM_CONNECTION_TYPES; connection_i++) {
-                for (std::size_t message_i = 0; message_i < (NUM_NET_MESSAGE_TYPES + 1); message_i++) {
-                    // a single statistic
-                    const NetStats::MsgStat& raw_stat = raw_stats[direction_i][network_i][connection_i][message_i];
+                for (std::size_t txrelay_i = 0; txrelay_i < NetStats::NUM_TXRELAY; txrelay_i++) {
+                    for (std::size_t message_i = 0; message_i < (NUM_NET_MESSAGE_TYPES + 1); message_i++) {
+                        // a single statistic
+                        const NetStats::MsgStat& raw_stat = raw_stats[direction_i][network_i][connection_i][txrelay_i][message_i];
 
-                    std::vector<std::string> path{};
-                    // "result" is our multi-level map, we use path to keep track of where we are as we move down it
+                        std::vector<std::string> path{};
+                        // "result" is our multi-level map, we use path to keep track of where we are as we move down it
 
-                    std::string dimension_name;
-                    // For each dimension type, get the actual name of the dimension on this stat
-                    // (i.e. the dimension name could be "tor" if the dimension type is "network")
-                    // This tells us which subtree to move into.
-                    for (unsigned int i = 0; i < num_dimensions; i++) {
-                        DimensionType dimension = dimensions[i];
+                        std::string dimension_name;
+                        // For each dimension type, get the actual name of the dimension on this stat
+                        // (i.e. the dimension name could be "tor" if the dimension type is "network")
+                        // This tells us which subtree to move into.
+                        for (unsigned int i = 0; i < num_dimensions; i++) {
+                            DimensionType dimension = dimensions[i];
 
-                        switch (dimension) {
-                        case DimensionType::MESSAGE_TYPE:
-                            dimension_name = messageTypeFromIndex(message_i);
+                            switch (dimension) {
+                            case DimensionType::MESSAGE_TYPE:
+                                dimension_name = messageTypeFromIndex(message_i);
 
-                            if (dimension_name == NET_MESSAGE_TYPE_OTHER) {
-                                dimension_name = "other"; // special case: instead of *other*
+                                if (dimension_name == NET_MESSAGE_TYPE_OTHER) {
+                                    dimension_name = "other"; // special case: instead of *other*
+                                }
+                                break;
+                            case DimensionType::CONNECTION_TYPE:
+                                dimension_name = ConnectionTypeAsString(NetStats::ConnectionTypeFromIndex(connection_i));
+                                break;
+                            case DimensionType::NETWORK_TYPE:
+                                dimension_name = GetNetworkName(NetStats::NetworkFromIndex(network_i));
+                                break;
+                            case DimensionType::DIRECTION:
+                                dimension_name = NetStats::DirectionAsString(NetStats::DirectionFromIndex(direction_i));
+                                break;
+                            case DimensionType::TX_RELAY:
+                                dimension_name = NetStats::GetTxRelay(NetStats::TxRelayFromIndex(txrelay_i));
+                                break;
+                            case DimensionType::NONE:
+                                break;
                             }
-                            break;
-                        case DimensionType::CONNECTION_TYPE:
-                            dimension_name = ConnectionTypeAsString(NetStats::ConnectionTypeFromIndex(connection_i));
-                            break;
-                        case DimensionType::NETWORK_TYPE:
-                            dimension_name = GetNetworkName(NetStats::NetworkFromIndex(network_i));
-                            break;
-                        case DimensionType::DIRECTION:
-                            dimension_name = NetStats::DirectionAsString(NetStats::DirectionFromIndex(direction_i));
-                            break;
-                        case DimensionType::NONE:
-                            break;
+                            path.push_back(dimension_name);
                         }
-                        path.push_back(dimension_name);
-                    }
 
-                    // If no dimensions are requested to be shown, return a single field for totals.
-                    if (path.size() == 0) {
-                        path.emplace_back("totals");
-                    }
+                        // If no dimensions are requested to be shown, return a single field for totals.
+                        if (path.size() == 0) {
+                            path.emplace_back("totals");
+                        }
 
-                    NetStats::MsgStat* v = result.get_value(path);
+                        NetStats::MsgStat* v = result.get_value(path);
 
-                    // If this path does not exist in the result object, create it.
-                    if (v == nullptr) {
-                        NetStats::MsgStat msg_stat = NetStats::MsgStat{raw_stat.byte_count.load(),
-                                                                       raw_stat.msg_count.load()};
-                        v = &msg_stat;
-                        // Otherwise, retrieve the corresponding path from the result object
-                        // and add the current stat to it.
-                    } else if (raw_stat.byte_count > 0) {
-                        v->msg_count += raw_stat.msg_count;
-                        v->byte_count += raw_stat.byte_count;
+                        // If this path does not exist in the result object, create it.
+                        if (v == nullptr) {
+                            NetStats::MsgStat msg_stat = NetStats::MsgStat{raw_stat.byte_count.load(),
+                                                                           raw_stat.msg_count.load()};
+                            v = &msg_stat;
+                            // Otherwise, retrieve the corresponding path from the result object
+                            // and add the current stat to it.
+                        } else if (raw_stat.byte_count > 0) {
+                            v->msg_count += raw_stat.msg_count;
+                            v->byte_count += raw_stat.byte_count;
+                        }
                     }
                 }
             }
@@ -826,7 +834,7 @@ static RPCHelpMan getnetmsgstats()
             RPCArg::Type::STR,
             RPCArg::Optional::OMITTED,
             "Dimension type to arrange results by.\n"
-            "Valid options are: direction, network, connection_type, and message_type"}}}},
+            "Valid options are: direction, network, connection_type, txrelay and message_type"}}}},
         {
             // A return object with one level of data: either when totals are returned (no dimensions),
             // or one dimension has been specified

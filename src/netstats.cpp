@@ -82,6 +82,17 @@ size_t NetStats::ConnectionTypeToIndex(ConnectionType conn_type)
     assert(false);
 }
 
+bool NetStats::TxRelayFromIndex(size_t index)
+{
+    return index ? true : false;
+}
+
+size_t NetStats::TxRelayToIndex(bool tx_relay)
+{
+    return tx_relay ? 1 : 0;
+}
+
+
 
 std::string NetStats::DirectionAsString(Direction direction)
 {
@@ -95,9 +106,22 @@ std::string NetStats::DirectionAsString(Direction direction)
     assert(false);
 }
 
+std::string NetStats::GetTxRelay(size_t tx_relay)
+{
+    switch (tx_relay) {
+    case 0:
+        return "0";
+    case 1:
+        return "1";
+    } // no default case, so the compiler can warn about missing cases
+
+    assert(false);
+}
+
 void NetStats::Record(Direction direction,
                       Network net,
                       ConnectionType conn_type,
+                      bool relays_tx,
                       const std::string& msg_type,
                       size_t byte_count)
 {
@@ -105,6 +129,7 @@ void NetStats::Record(Direction direction,
         .at(DirectionToIndex(direction))
         .at(NetworkToIndex(net))
         .at(ConnectionTypeToIndex(conn_type))
+        .at(TxRelayToIndex(relays_tx))
         .at(messageTypeToIndex(msg_type));
 
     ++data.msg_count;

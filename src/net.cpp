@@ -3946,6 +3946,7 @@ void CNode::MarkReceivedMsgsForProcessing(NetStats& net_stats)
         net_stats.Record(NetStats::Direction::RECV,
                          ConnectedThroughNetwork(),
                          m_conn_type,
+                         m_relays_txs,
                          msg.m_type,
                          msg.m_raw_message_size);
     }
@@ -4024,6 +4025,7 @@ void CConnman::PushMessage(CNode* pnode, CSerializedNetMsg&& msg)
         m_net_stats.Record(NetStats::Direction::SENT,
                            pnode->ConnectedThroughNetwork(),
                            pnode->m_conn_type,
+                           pnode->m_relays_txs,
                            msgType,
                            nBytesSent);
 
