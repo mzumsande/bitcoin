@@ -326,6 +326,10 @@ class InvalidMessagesTest(BitcoinTestFramework):
         self.nodes[0].disconnect_p2ps()
 
     def test_resource_exhaustion(self):
+        # Skip with v2 - the non-optimised encryption requires several seconds just to encrypt each
+        # message, so with v2, this doesn't stress the node but the test framework
+        if self.options.v2transport:
+            return
         self.log.info("Test node stays up despite many large junk messages")
         conn = self.nodes[0].add_p2p_connection(P2PDataStore())
         conn2 = self.nodes[0].add_p2p_connection(P2PDataStore())

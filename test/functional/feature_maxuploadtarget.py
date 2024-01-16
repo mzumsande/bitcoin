@@ -51,6 +51,10 @@ class MaxUploadTest(BitcoinTestFramework):
         self.supports_cli = False
 
     def run_test(self):
+        # Skip with v2transport, too slow with the unoptimized python ChCha20 implementation
+        if self.options.v2transport:
+            return
+
         # Before we connect anything, we first set the time on the node
         # to be in the past, otherwise things break because the CNode
         # time counters can't be reset backward after initialization
