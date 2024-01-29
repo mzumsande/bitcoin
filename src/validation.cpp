@@ -4945,14 +4945,27 @@ void ChainstateManager::CheckBlockIndex()
             assert((pindex->nStatus & BLOCK_FAILED_MASK) == 0); // The failed mask cannot be set for blocks without invalid parents.
         }
         // Make sure nChainTx sum is correctly computed.
-        unsigned int prev_chain_tx = pindex->pprev ? pindex->pprev->nChainTx : 0;
-        assert((pindex->nChainTx == pindex->nTx + prev_chain_tx)
-               // Transaction may be completely unset - happens if only the header was accepted but the block hasn't been processed.
-               || (pindex->nChainTx == 0 && pindex->nTx == 0)
-               // nChainTx may be unset, but nTx set (if a block has been accepted, but one of its predecessors hasn't been processed yet)
-               || (pindex->nChainTx == 0 && prev_chain_tx == 0 && pindex->pprev)
-               // Transaction counts prior to snapshot are unknown.
-               || pindex->IsAssumedValid());
+        if (!pindex->pprev) {
+            // If there's no previous block, nChainTx should be set to the number
+            // of transactions in this block.
+            assert(pindex->nChainTx == pindex->nTx);
+        } else if (pindex->IsAssumedValid()) {
+            // If block is assumed valid, nChainTx could be faked, but should at
+            // least be increasing between blocks. The only exception is
+            // assumed-valid blocks that are not the snapshot block and don't
+            // have transactions, directly following blocks that do have
+            // transactions. The faked nChainTx values in these will probably be
+            // less than the non-faked values in the previous blocks.
+            assert(pindex->nChainTx > pindex->pprev->nChainTx || (!pindex->IsValid() && pindex->pprev->IsValid() && pindex != GetSnapshotBaseBlock()));
+        } else if (pindex->nTx == 0 || pindex->pprev->nChainTx == 0) {
+            // If block is missing transactions, or any parent block is,
+            // nChainTx should be unset.
+            assert(pindex->nChainTx == 0);
+        } else {
+            // For normal blocks, nChainTx should be set to the sum of
+            // transactions in this and previous blocks.
+            assert(pindex->nChainTx == pindex->pprev->nChainTx + pindex->nTx);
+        }
         // Chainstate-specific checks on setBlockIndexCandidates
         for (auto c : GetAll()) {
             if (c->m_chain.Tip() == nullptr) continue;
