@@ -462,6 +462,7 @@ bool BlockManager::LoadBlockIndex(const std::optional<uint256>& snapshot_blockha
             pindex->BuildSkip();
         }
     }
+    LogPrintf("MZ unlinked size: %d\n",m_blocks_unlinked.size() );
 
     return true;
 }

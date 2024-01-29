@@ -377,10 +377,16 @@ public:
 
         m_assumeutxo_data = {
             {
-                .height = 100'016,
-                .hash_serialized = AssumeutxoHash{uint256S("0x721b209353eb190be2dc498bad7fd420c7ba611042b27b7a598b9234f7407289")},
-                .nChainTx = 12345,
-                .blockhash = uint256S("0x000001301bada810147463d5b1d72caf0807ad1fdaf015d084f5c474b8cc44c6")
+                .height = 150004,
+                    .hash_serialized = AssumeutxoHash{uint256S("0xa34d407c15ba8b5f926653ac2f18e4579da1ef961597ccd4e59abb622208c861")},
+                .nChainTx = 2262754,
+                .blockhash = uint256S("0x00000041e7bc52ae250d87f80443344da9f170573b92860ab7236022c026f604")
+            },
+            {
+                .height = 50004,
+                    .hash_serialized = AssumeutxoHash{uint256S("0xff1c4ec2e3f46d12db08f39ab0d7d1f994d6301a53a30841827697f917263a85")},
+                .nChainTx = 438566,
+                .blockhash = uint256S("0x0000014ad72fc2e3c7c0d49253224b1af6e6d94ea207c3f22133cea52e295ead")
             }
         };
 

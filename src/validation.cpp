@@ -4823,6 +4823,7 @@ void ChainstateManager::CheckBlockIndex()
     if (!ShouldCheckBlockIndex()) {
         return;
     }
+    LogPrintf("MZ CBI\n");
 
     LOCK(cs_main);
 
