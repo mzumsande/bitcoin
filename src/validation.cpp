@@ -4859,6 +4859,7 @@ void ChainstateManager::CheckBlockIndex()
     CBlockIndex* pindexFirstNotChainValid = nullptr; // Oldest ancestor of pindex which does not have BLOCK_VALID_CHAIN (regardless of being valid or not).
     CBlockIndex* pindexFirstNotScriptsValid = nullptr; // Oldest ancestor of pindex which does not have BLOCK_VALID_SCRIPTS (regardless of being valid or not).
     CBlockIndex* pindexFirstAssumeValid = nullptr; // Oldest ancestor of pindex which has BLOCK_ASSUMED_VALID
+    const CBlockIndex* snap_base{GetSnapshotBaseBlock()};
     while (pindex != nullptr) {
         nNodes++;
         if (pindexFirstAssumeValid == nullptr && pindex->nStatus & BLOCK_ASSUMED_VALID) pindexFirstAssumeValid = pindex;
@@ -4930,8 +4931,22 @@ void ChainstateManager::CheckBlockIndex()
             assert(((pindex->nStatus & BLOCK_VALID_MASK) >= BLOCK_VALID_TRANSACTIONS) == (pindex->nTx > 0)); // This is pruning-independent.
         }
         // All parents having had data (at some point) is equivalent to all parents being VALID_TRANSACTIONS, which is equivalent to HaveNumChainTxs().
+        // However, an exception to this is possible for the snapshot base
+        // block. In rare cases, the snapshot base block, which has a non-zero
+        // nChainTx value initialized from snapshot metadata, may temporarily
+        // have its nChainTx value set to 0 by ReceivedBlockTransations if it is
+        // downloaded out of order, before one of its parent blocks. This is
+        // confusing behavior, but not a bug as long as the check below is
+        // written to account for it. More work should be done later to clean up
+        // the behavior and simplify the check, see
+        // https://github.com/bitcoin/bitcoin/pull/29370#discussion_r1505114232
         assert((pindexFirstNeverProcessed == nullptr) == pindex->HaveNumChainTxs());
-        assert((pindexFirstNotTransactionsValid == nullptr) == pindex->HaveNumChainTxs());
+        if (pindex->HaveNumChainTxs()) {
+            assert(pindexFirstNotTransactionsValid == nullptr);
+        } else {
+            const bool unprocessed_snapshot_block{pindex == snap_base && pindex->nTx == 0};
+            assert(pindexFirstNotTransactionsValid != nullptr || unprocessed_snapshot_block);
+        }
         assert(pindex->nHeight == nHeight); // nHeight must be consistent.
         assert(pindex->pprev == nullptr || pindex->nChainWork >= pindex->pprev->nChainWork); // For every block except the genesis block, the chainwork must be larger than the parent's.
         assert(nHeight < 2 || (pindex->pskip && (pindex->pskip->nHeight < nHeight))); // The pskip pointer must point back for all but the first 2 blocks.
