@@ -4934,25 +4934,14 @@ void ChainstateManager::CheckBlockIndex()
         // actually seen a block's transactions.
         assert(((pindex->nStatus & BLOCK_VALID_MASK) >= BLOCK_VALID_TRANSACTIONS) == (pindex->nTx > 0)); // This is pruning-independent.
         // All parents having had data (at some point) is equivalent to all parents being VALID_TRANSACTIONS, which is equivalent to HaveNumChainTxs().
-        // HaveNumChainTxs will also be set in the assumeutxo snapshot block
-        // from snapshot metadata.
-        // However, an exception to this is possible for the snapshot base
-        // block. In rare cases, the snapshot base block, which has a non-zero
-        // nChainTx value initialized from snapshot metadata, may temporarily
-        // have its nChainTx value set to 0 by ReceivedBlockTransations if it is
-        // downloaded out of order, before one of its parent blocks. This is
-        // confusing behavior, but not a bug as long as the check below is
-        // written to account for it. More work should be done later to clean up
-        // the behavior and simplify the check, see
-        // https://github.com/bitcoin/bitcoin/pull/29370#discussion_r1505114232
+        // HaveNumChainTxs will also be set in the assumeutxo snapshot block from snapshot metadata.
         if (pindex->HaveNumChainTxs()) {
             assert(pindexFirstNeverProcessed == nullptr || pindex == snap_base);
             assert(pindexFirstNotTransactionsValid == nullptr || pindex == snap_base);
         } else {
-            const bool unprocessed_snapshot_block{pindex == snap_base && pindex->nTx == 0};
-            assert(pindexFirstNeverProcessed != nullptr || unprocessed_snapshot_block);
-            assert(pindexFirstNotTransactionsValid != nullptr || unprocessed_snapshot_block);
-            assert(pindex != snap_base || unprocessed_snapshot_block);
+            assert(pindexFirstNeverProcessed != nullptr);
+            assert(pindexFirstNotTransactionsValid != nullptr);
+            assert(pindex != snap_base);
         }
         assert(pindex->nHeight == nHeight); // nHeight must be consistent.
         assert(pindex->pprev == nullptr || pindex->nChainWork >= pindex->pprev->nChainWork); // For every block except the genesis block, the chainwork must be larger than the parent's.
