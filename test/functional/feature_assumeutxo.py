@@ -32,6 +32,7 @@ Interesting starting states could be loading a snapshot when the current chain t
 - TODO: Not an ancestor or a descendant of the snapshot block and has more work
 
 """
+import random
 from shutil import rmtree
 
 from dataclasses import dataclass
@@ -56,18 +57,19 @@ class AssumeutxoTest(BitcoinTestFramework):
 
     def set_test_params(self):
         """Use the pregenerated, deterministic chain up to height 199."""
-        self.num_nodes = 3
+        self.num_nodes = 4
         self.rpc_timeout = 120
         self.extra_args = [
             [],
             ["-fastprune", "-prune=1", "-blockfilterindex=1", "-coinstatsindex=1"],
             ["-txindex=1", "-blockfilterindex=1", "-coinstatsindex=1"],
+            [],
         ]
 
     def setup_network(self):
         """Start with the nodes disconnected so that one can generate a snapshot
         including blocks the other hasn't yet seen."""
-        self.add_nodes(3)
+        self.add_nodes(4)
         self.start_nodes(extra_args=self.extra_args)
 
     def test_invalid_snapshot_scenarios(self, valid_snapshot_path):
@@ -147,6 +149,7 @@ class AssumeutxoTest(BitcoinTestFramework):
         n0 = self.nodes[0]
         n1 = self.nodes[1]
         n2 = self.nodes[2]
+        n3 = self.nodes[3]
 
         self.mini_wallet = MiniWallet(n0)
 
@@ -187,7 +190,7 @@ class AssumeutxoTest(BitcoinTestFramework):
             n2.submitheader(newblock)
 
         # Ensure everyone is seeing the same headers.
-        for n in self.nodes:
+        for n in self.nodes[0:2]:
             assert_equal(n.getblockchaininfo()["headers"], SNAPSHOT_BASE_HEIGHT)
 
         self.log.info("-- Testing assumeutxo + some indexes + pruning")
@@ -355,7 +358,7 @@ class AssumeutxoTest(BitcoinTestFramework):
 
         self.connect_nodes(0, 2)
         self.wait_until(lambda: n2.getchainstates()['chainstates'][-1]['blocks'] == FINAL_HEIGHT)
-        self.sync_blocks()
+        self.sync_blocks(self.nodes[0:2])
 
         self.log.info("Ensuring background validation completes")
         self.wait_until(lambda: len(n2.getchainstates()['chainstates']) == 1)
@@ -391,6 +394,27 @@ class AssumeutxoTest(BitcoinTestFramework):
         self.restart_node(2, extra_args=['-reindex=1', *self.extra_args[2]])
         self.connect_nodes(0, 2)
         self.wait_until(lambda: n2.getblockcount() == FINAL_HEIGHT)
+
+        raw_block_data = []
+        for height in range(START_HEIGHT, FINAL_HEIGHT + 1):
+            hash = n0.getblockhash(height)
+            block = n0.getblock(hash, 0)
+            raw_block_data.append(block)
+            n3.submitheader(block)
+
+        self.log.info(f"Loading snapshot into node 3 from {dump_output['path']}")
+        loaded = n3.loadtxoutset(dump_output['path'])
+        assert_equal(loaded['coins_loaded'], SNAPSHOT_BASE_HEIGHT)
+        assert_equal(loaded['base_height'], SNAPSHOT_BASE_HEIGHT)
+
+        self.log.info(f"Submitting blocks to node 3 in a randomized order")
+        random.shuffle(raw_block_data)
+        for block in raw_block_data:
+            n3.submitblock(block)
+        self.wait_until(lambda: n3.getbestblockhash() == n0.getbestblockhash())
+
+
+
 
 @dataclass
 class Block:
