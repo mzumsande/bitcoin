@@ -1789,6 +1789,10 @@ void PeerManagerImpl::Misbehaving(Peer& peer, int howmuch, const std::string& me
 
     LogPrintf("Misbehaving: peer=%d (%d -> %d)%s%s\n",
              peer.m_id, score_before, score_now, warning, message_prefixed);
+    m_connman.ForNode(peer.m_id, [&](CNode* pnode) {
+        LogPrintf("Misbehaving peer: %d\n", pnode->addr.ToStringAddrPort());
+        return true;
+    });
 }
 
 bool PeerManagerImpl::MaybePunishNodeForBlock(NodeId nodeid, const BlockValidationState& state,
