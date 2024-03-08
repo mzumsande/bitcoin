@@ -3590,7 +3590,10 @@ void ChainstateManager::ReceivedBlockTransactions(const CBlock& block, CBlockInd
 {
     AssertLockHeld(cs_main);
     pindexNew->nTx = block.vtx.size();
-    pindexNew->nChainTx = 0;
+    // If a snapshot was loaded, nChainTx is already set for the snapshot block using the hard-coded value from the chainparams.
+    if (pindexNew != GetSnapshotBaseBlock()) {
+        pindexNew->nChainTx = 0;
+    }
     pindexNew->nFile = pos.nFile;
     pindexNew->nDataPos = pos.nPos;
     pindexNew->nUndoPos = 0;
