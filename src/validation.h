@@ -1271,6 +1271,9 @@ public:
     //! nullopt.
     std::optional<int> GetSnapshotBaseHeight() const EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
 
+    std::optional<AssumeutxoData> AssumeutxoForHeight(int height) const;
+    std::optional<AssumeutxoData> AssumeutxoForBlockhash(const uint256& blockhash) const;
+
     CCheckQueue<CScriptCheck>& GetCheckQueue() { return m_script_check_queue; }
 
     ~ChainstateManager();

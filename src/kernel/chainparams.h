@@ -118,16 +118,6 @@ public:
     const std::string& Bech32HRP() const { return bech32_hrp; }
     const std::vector<uint8_t>& FixedSeeds() const { return vFixedSeeds; }
     const CCheckpointData& Checkpoints() const { return checkpointData; }
-
-    std::optional<AssumeutxoData> AssumeutxoForHeight(int height) const
-    {
-        return FindFirst(m_assumeutxo_data, [&](const auto& d) { return d.height == height; });
-    }
-    std::optional<AssumeutxoData> AssumeutxoForBlockhash(const uint256& blockhash) const
-    {
-        return FindFirst(m_assumeutxo_data, [&](const auto& d) { return d.blockhash == blockhash; });
-    }
-
     const ChainTxData& TxData() const { return chainTxData; }
 
     /**

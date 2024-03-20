@@ -6123,6 +6123,16 @@ std::optional<int> ChainstateManager::GetSnapshotBaseHeight() const
     return base ? std::make_optional(base->nHeight) : std::nullopt;
 }
 
+std::optional<AssumeutxoData> AssumeutxoForHeight(int height) const;
+{
+    return FindFirst(GetParams().m_assumeutxo_data, [&](const auto& d) { return d.height == height; });
+}
+
+std::optional<AssumeutxoData> AssumeutxoForBlockhash(const uint256& blockhash) const
+{
+    return FindFirst(GetParams().m_assumeutxo_data, [&](const auto& d) { return d.blockhash == blockhash; });
+}
+
 bool ChainstateManager::ValidatedSnapshotCleanup()
 {
     AssertLockHeld(::cs_main);
