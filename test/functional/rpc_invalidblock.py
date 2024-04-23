@@ -54,7 +54,7 @@ class RPCInvalidBlockRPCTest(BitcoinTestFramework):
         tips = n0.getchaintips()
         assert_equal(len(tips), 2)
         assert_equal(tips[0]['height'], 2)
-        assert_equal(tips[0]['status'], 'headers-only')  # bug: invalid chain marked as headers-only
+        assert_equal(tips[0]['status'], 'invalid')
 
         self.log.info("Check getchaintips behavior after restart")
         self.restart_node(0)

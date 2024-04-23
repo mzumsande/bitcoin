@@ -1876,6 +1876,11 @@ void Chainstate::InvalidChainFound(CBlockIndex* pindexNew)
         m_chainman.m_best_invalid = pindexNew;
     }
     if (m_chainman.m_best_header != nullptr && m_chainman.m_best_header->GetAncestor(pindexNew->nHeight) == pindexNew) {
+        CBlockIndex *index_walk{m_chainman.m_best_header};
+        while (index_walk != pindexNew) {
+                index_walk->nStatus |= BLOCK_FAILED_CHILD;
+                index_walk = index_walk->pprev;
+        }
         m_chainman.m_best_header = m_chain.Tip();
     }
 
