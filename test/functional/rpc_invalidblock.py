@@ -98,7 +98,7 @@ class RPCInvalidBlockRPCTest(BitcoinTestFramework):
         n0.submitblock(valid_fork.serialize().hex())
 
         info = n0.getblockchaininfo()
-        assert_equal(info['headers'], start_height)  # bug: we should never have fewer headers than blocks
+        assert_equal(info['headers'], start_height + 1)
         assert_equal(info['blocks'], start_height + 1)
 
         self.log.info("Check getblockchaininfo behavior after restart")
