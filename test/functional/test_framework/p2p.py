@@ -378,7 +378,7 @@ class P2PConnection(asyncio.Protocol):
 
     # Socket write methods
 
-    def send_message(self, message, is_decoy=False):
+    def send_message(self, message, is_decoy=False, wait_time=None):
         """Send a P2P message over the socket.
 
         This method takes a P2P payload, builds the P2P header and adds
@@ -386,9 +386,9 @@ class P2PConnection(asyncio.Protocol):
         with self._send_lock:
             tmsg = self.build_message(message, is_decoy)
             self._log_message("send", message)
-            return self.send_raw_message(tmsg)
+            return self.send_raw_message(tmsg, wait_time)
 
-    def send_raw_message(self, raw_message_bytes):
+    def send_raw_message(self, raw_message_bytes, wait_time=None):
         if not self.is_connected:
             raise IOError('Not connected')
 
@@ -398,7 +398,10 @@ class P2PConnection(asyncio.Protocol):
             if self._transport.is_closing():
                 return
             self._transport.write(raw_message_bytes)
-        NetworkThread.network_event_loop.call_soon_threadsafe(maybe_write)
+        if wait_time:
+            NetworkThread.network_event_loop.call_later(wait_time, maybe_write)
+        else:
+            NetworkThread.network_event_loop.call_soon_threadsafe(maybe_write)
 
     # Class utility methods
 
@@ -808,7 +811,7 @@ class P2PDataStore(P2PInterface):
         self.tx_store = {}
         self.getdata_requests = []
 
-    def on_getdata(self, message):
+    def on_getdata(self, message, wait_time = None):
         """Check for the tx/block in our stores and if found, reply with MSG_TX or MSG_BLOCK."""
         for inv in message.inv:
             self.getdata_requests.append(inv.hash)
@@ -816,7 +819,7 @@ class P2PDataStore(P2PInterface):
             if (invtype == MSG_TX or invtype == MSG_WTX) and inv.hash in self.tx_store.keys():
                 self.send_message(msg_tx(self.tx_store[inv.hash]))
             elif invtype == MSG_BLOCK and inv.hash in self.block_store.keys():
-                self.send_message(msg_block(self.block_store[inv.hash]))
+                self.send_message(msg_block(self.block_store[inv.hash]), wait_time = wait_time)
             else:
                 logger.debug('getdata message type {} received.'.format(hex(inv.type)))
 
