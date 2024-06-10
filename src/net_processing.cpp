@@ -1533,7 +1533,8 @@ void PeerManagerImpl::TryDownloadingHistoricalBlocks(const Peer& peer, unsigned 
         // complete history beneath the snapshot base.
         return;
     }
-
+    // If the background tip is not an ancestor of the snapshot block, we need to start requesting blocks from their last common ancestor.
+    from_tip = LastCommonAncestor(from_tip, target_block);
     FindNextBlocks(vBlocks, peer, state, from_tip, count, std::min<int>(from_tip->nHeight + BLOCK_DOWNLOAD_WINDOW, target_block->nHeight));
 }
 
