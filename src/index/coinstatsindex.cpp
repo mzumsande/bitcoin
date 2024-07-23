@@ -32,9 +32,8 @@ struct DBVal {
     uint64_t transaction_output_count;
     uint64_t bogo_size;
     CAmount total_amount;
-    CAmount total_unspendable_amount;
-
     CAmount block_subsidy;
+    CAmount total_unspendable_amount;
     CAmount block_prevout_spent_amount;
     CAmount block_new_outputs_ex_coinbase_amount;
     CAmount block_coinbase_amount;
@@ -50,8 +49,8 @@ struct DBVal {
         READWRITE(obj.transaction_output_count);
         READWRITE(obj.bogo_size);
         READWRITE(obj.total_amount);
-        READWRITE(obj.total_unspendable_amount);
         READWRITE(obj.block_subsidy);
+        READWRITE(obj.total_unspendable_amount);
         READWRITE(obj.block_prevout_spent_amount);
         READWRITE(obj.block_new_outputs_ex_coinbase_amount);
         READWRITE(obj.block_coinbase_amount);
