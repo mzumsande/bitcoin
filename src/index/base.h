@@ -72,9 +72,6 @@ private:
     /// with an empty datadir if, e.g., `-txindex=1` is specified.
     std::atomic<bool> m_synced{false};
 
-    /// The last block in the chain that the index is in sync with.
-    std::atomic<const CBlockIndex*> m_best_block_index{nullptr};
-
     std::thread m_thread_sync;
     CThreadInterrupt m_interrupt;
 
@@ -98,6 +95,8 @@ private:
     void FatalErrorf(const char* fmt, const Args&... args);
 
 protected:
+    /// The last block in the chain that the index is in sync with.
+    std::atomic<const CBlockIndex*> m_best_block_index{nullptr};
     std::unique_ptr<interfaces::Chain> m_chain;
     Chainstate* m_chainstate{nullptr};
     const std::string m_name;
