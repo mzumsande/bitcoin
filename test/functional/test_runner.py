@@ -93,6 +93,7 @@ BASE_SCRIPTS = [
     # Scripts that are run by default.
     # Longest test should go first, to favor running tests in parallel
     # vv Tests less than 5m vv
+    'interface_usdt_mempool.py',
     'feature_fee_estimation.py',
     'feature_taproot.py',
     'feature_block.py',
@@ -215,7 +216,6 @@ BASE_SCRIPTS = [
     'interface_http.py',
     'interface_rpc.py',
     'interface_usdt_coinselection.py',
-    'interface_usdt_mempool.py',
     'interface_usdt_net.py',
     'interface_usdt_utxocache.py',
     'interface_usdt_validation.py',
