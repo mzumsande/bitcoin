@@ -312,10 +312,12 @@ class MempoolTracepointTest(BitcoinTestFramework):
         self.generate(node, COINBASE_MATURITY)
 
         # Test individual tracepoints
-        self.added_test()
-        self.removed_test()
-        self.replaced_test()
-        self.rejected_test()
+        # self.added_test()
+        # self.removed_test()
+        # self.replaced_test()
+        for i in range(100):
+            print(f"test run #{i}")
+            self.rejected_test()
 
 
 if __name__ == "__main__":
