@@ -4557,11 +4557,10 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         // Do not process unrequested transactions to mitigate potential DoS risks.
         // We check both identifiers as txid mode may happen with wtxidrelay peers
         // due to parent-orphan fetching.
-        bool is_expected = tx.HasWitness() ? m_txrequest.ExpectedTx(pfrom.GetId(), wtxid) || 
+        bool is_expected = tx.HasWitness() ? m_txrequest.ExpectedTx(pfrom.GetId(), wtxid) ||
             m_txrequest.ExpectedTx(pfrom.GetId(), txid) : m_txrequest.ExpectedTx(pfrom.GetId(), txid);
-        if (!pfrom.HasPermission(NetPermissionFlags::Relay) && pfrom.GetCommonVersion() >= REJECT_UNSOLICITED_TX_VERSION &&
-            !is_expected) {
-            LogPrint(BCLog::NET, "unrequested transaction from peer=%d\n", pfrom.GetId());
+        if (!pfrom.HasPermission(NetPermissionFlags::Relay) && !is_expected) {
+            LogPrintf("MZ unrequested transaction %s (w %s) from peer=%d (%d)\n", txid.ToString(), wtxid.ToString(), pfrom.GetId(), pfrom.addr.ToStringAddrPort());
             return;
         }
 
