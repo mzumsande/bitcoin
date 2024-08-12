@@ -1863,6 +1863,8 @@ MempoolAcceptResult AcceptToMemoryPool(Chainstate& active_chainstate, const CTra
     CTxMemPool& pool{*active_chainstate.GetMempool()};
 
     std::vector<COutPoint> coins_to_uncache;
+    static char string_buffer[120];
+
     auto args = MemPoolAccept::ATMPArgs::SingleAccept(chainparams, accept_time, bypass_limits, coins_to_uncache, test_accept);
     MempoolAcceptResult result = MemPoolAccept(pool, active_chainstate).AcceptSingleTransaction(tx, args);
     if (result.m_result_type != MempoolAcceptResult::ResultType::VALID) {
@@ -1873,9 +1875,10 @@ MempoolAcceptResult AcceptToMemoryPool(Chainstate& active_chainstate, const CTra
 
         for (const COutPoint& hashTx : coins_to_uncache)
             active_chainstate.CoinsTip().Uncache(hashTx);
+        strncpy(string_buffer, result.m_state.GetRejectReason().c_str(), 120 - 1);
         TRACE2(mempool, rejected,
                 tx->GetHash().data(),
-                result.m_state.GetRejectReason().c_str()
+                string_buffer
         );
     }
     // After we've (potentially) uncached entries, ensure our coins cache is still within its size limits
