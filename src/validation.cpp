@@ -1880,6 +1880,10 @@ MempoolAcceptResult AcceptToMemoryPool(Chainstate& active_chainstate, const CTra
                 tx->GetHash().data(),
                 string_buffer
         );
+
+        for(int i=0; i < 100; i++) {
+            snprintf(string_buffer, sizeof(string_buffer), "Test %d", i);
+        }
     }
     // After we've (potentially) uncached entries, ensure our coins cache is still within its size limits
     BlockValidationState state_dummy;
