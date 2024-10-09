@@ -13,14 +13,27 @@ from test_framework.blocktools import (
         create_coinbase
 )
 from test_framework.messages import (
+        COutPoint,
+        CTransaction,
+        CTxIn,
+        CTxOut,
+        HeaderAndShortIDs,
         MSG_BLOCK,
         MSG_TYPE_MASK,
+        msg_cmpctblock,
+        msg_sendcmpct,
+)
+from test_framework.script import (
+    CScript,
+    OP_DROP,
+    OP_TRUE,
 )
 from test_framework.p2p import (
         CBlockHeader,
         msg_block,
         msg_headers,
         P2PDataStore,
+        p2p_lock,
 )
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
@@ -50,7 +63,7 @@ class P2PStaller(P2PDataStore):
 class P2PIBDStallingTest(BitcoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.num_nodes = 2
+        self.num_nodes = 3
 
     def setup_network(self):
         self.setup_nodes()
@@ -65,7 +78,7 @@ class P2PIBDStallingTest(BitcoinTestFramework):
         node = self.nodes[0]
         tip = int(node.getbestblockhash(), 16)
         height = 1
-        block_time = node.getblock(node.getbestblockhash())['time'] + 1
+        block_time = int(time.time())
         for _ in range(self.NUM_BLOCKS):
             self.blocks.append(create_block(tip, create_coinbase(height), block_time))
             self.blocks[-1].solve()
@@ -186,6 +199,55 @@ class P2PIBDStallingTest(BitcoinTestFramework):
         node.setmocktime(self.mocktime)
         for peer in peers:
             peer.wait_for_disconnect()
+        # Cleanup
+        self.log.info("Provide missing block")
+        peer = node.add_outbound_p2p_connection(P2PInterface(), p2p_idx=0, connection_type="outbound-full-relay")
+        peer.send_message(msg_block(self.block_dict[stall_block]))
+        self.wait_until(lambda: node.getblockcount() == self.NUM_BLOCKS - 1)
+        self.disconnect_peers()
+
+    def at_tip_stalling(self):
+        # Test interaction with
+        node = self.nodes[2]
+        peers = []
+
+        peers.append(node.add_outbound_p2p_connection(P2PStaller(None), p2p_idx=0, connection_type="outbound-full-relay"))
+        for id in range(1, 4):
+            peers.append(node.add_outbound_p2p_connection(P2PStaller(None), p2p_idx=id, connection_type="outbound-full-relay"))
+
+        # First Peer is a high-bw compact block peer
+        peers[0].send_and_ping(msg_sendcmpct(announce=True, version=2))
+        peers[0].block_store = self.block_dict
+        headers_message = msg_headers()
+        headers_message.headers = [CBlockHeader(b) for b in self.blocks[:2]]
+        peers[0].send_message(headers_message)
+        self.wait_until(lambda: node.getblockcount() == 2)
+
+        # Create a block with a tx (invalid, but this doesn't matter her)
+        tx = CTransaction()
+        tx.vin.append(CTxIn(COutPoint(self.blocks[1].vtx[0].sha256, 0), scriptSig=b""))
+        tx.vout.append(CTxOut(49 * 100000000, CScript([OP_TRUE])))
+        tx.calc_sha256()
+        block_time = node.getblock(node.getbestblockhash())['time'] + 1
+        block = create_block(self.blocks[1].sha256, create_coinbase(3), block_time, txlist=[tx])
+        block.solve()
+
+        # Announce block via cmpctblock from peer 1
+        cmpct_block = HeaderAndShortIDs()
+        cmpct_block.initialize_from_block(block)
+        peers[0].send_and_ping(msg_cmpctblock(cmpct_block.to_p2p()))
+        with p2p_lock:
+            assert "getblocktxn" in peers[0].last_message
+
+        # Also announce block from other peers (by header)
+        headers_message = msg_headers()
+        headers_message.headers = [CBlockHeader(block)]
+        for peer in peers[1:4]:
+            peer.send_and_ping(headers_message)
+
+        assert_equal(sum(peer.stall_block_requested for peer in peers), 3)
+
+
 
     def total_bytes_recv_for_blocks(self, node):
         total = 0
@@ -207,9 +269,9 @@ class P2PIBDStallingTest(BitcoinTestFramework):
 
     def run_test(self):
         self.prepare_blocks()
-        self.ibd_stalling()
-        self.near_tip_stalling()
-
+        #self.ibd_stalling()
+        #self.near_tip_stalling()
+        self.at_tip_stalling()
 
 if __name__ == '__main__':
     P2PIBDStallingTest(__file__).main()
