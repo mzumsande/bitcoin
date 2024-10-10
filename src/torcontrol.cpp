@@ -6,7 +6,6 @@
 #include <torcontrol.h>
 
 #include <chainparams.h>
-#include <chainparamsbase.h>
 #include <common/args.h>
 #include <compat/compat.h>
 #include <crypto/hmac_sha256.h>
@@ -709,11 +708,4 @@ void StopTorControl()
         event_base_free(gBase);
         gBase = nullptr;
     }
-}
-
-CService DefaultOnionServiceTarget()
-{
-    struct in_addr onion_service_target;
-    onion_service_target.s_addr = htonl(INADDR_LOOPBACK);
-    return {onion_service_target, BaseParams().OnionServiceTargetPort()};
 }

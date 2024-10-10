@@ -351,4 +351,6 @@ bool IsBadPort(uint16_t port);
  */
 CService MaybeFlipIPv6toCJDNS(const CService& service);
 
+CService DefaultOnionServiceTarget();
+
 #endif // BITCOIN_NETBASE_H

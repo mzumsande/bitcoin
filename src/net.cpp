@@ -28,6 +28,7 @@
 #include <protocol.h>
 #include <random.h>
 #include <scheduler.h>
+#include <scheduler.h>
 #include <util/fs.h>
 #include <util/sock.h>
 #include <util/strencodings.h>
@@ -3202,9 +3203,16 @@ bool CConnman::InitBinds(const Options& options)
             return false;
         }
     }
+    // Don't abort if binding to the default onion.
+    bool default_onion{false};
+    if (options.onion_binds.empty()) {
+        if (!Bind(DefaultOnionServiceTarget(), BF_REPORT_ERROR | BF_DONT_ADVERTISE, NetPermissionFlags::None)) {
+            LogWarning("Cannot bind to default onion service target, possibly due to another bitcoind instance running. This is only a problem if you want to receive incoming connections over tor.");
+        }
+    }
     for (const auto& addr_bind : options.onion_binds) {
         if (!Bind(addr_bind, BF_REPORT_ERROR | BF_DONT_ADVERTISE, NetPermissionFlags::None)) {
-            return false;
+                return false;
         }
     }
     if (options.bind_on_any) {

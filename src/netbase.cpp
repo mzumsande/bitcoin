@@ -7,6 +7,7 @@
 
 #include <netbase.h>
 
+#include <chainparamsbase.h>
 #include <compat/compat.h>
 #include <logging.h>
 #include <sync.h>
@@ -886,4 +887,12 @@ CService MaybeFlipIPv6toCJDNS(const CService& service)
         ret.m_net = NET_CJDNS;
     }
     return ret;
+}
+
+
+CService DefaultOnionServiceTarget()
+{
+    struct in_addr onion_service_target;
+    onion_service_target.s_addr = htonl(INADDR_LOOPBACK);
+    return {onion_service_target, BaseParams().OnionServiceTargetPort()};
 }
