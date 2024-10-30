@@ -1044,6 +1044,13 @@ bool BlockManager::ReadBlock(CBlock& block, const CBlockIndex& index) const
     return true;
 }
 
+void BlockManager::CleanupForFuzzing()
+{
+    m_dirty_blockindex.clear();
+    m_dirty_fileinfo.clear();
+    m_blockfile_info.resize(1);
+}
+
 bool BlockManager::ReadRawBlock(std::vector<uint8_t>& block, const FlatFilePos& pos) const
 {
     FlatFilePos hpos = pos;
