@@ -1253,4 +1253,11 @@ std::ostream& operator<<(std::ostream& os, const BlockfileCursor& cursor) {
     os << strprintf("BlockfileCursor(file_num=%d, undo_height=%d)", cursor.file_num, cursor.undo_height);
     return os;
 }
+
+void BlockManager::CleanupForFuzzing()
+{
+    m_dirty_blockindex.clear();
+    m_dirty_fileinfo.clear();
+    m_blockfile_info.resize(1);
+}
 } // namespace node
