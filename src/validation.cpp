@@ -3743,8 +3743,6 @@ bool Chainstate::InvalidateBlock(BlockValidationState& state, CBlockIndex* pinde
         to_mark_failed = invalid_walk_tip;
     }
 
-    m_chainman.CheckBlockIndex();
-
     {
         LOCK(cs_main);
         if (m_chain.Contains(to_mark_failed)) {
@@ -3773,6 +3771,9 @@ bool Chainstate::InvalidateBlock(BlockValidationState& state, CBlockIndex* pinde
 
         InvalidChainFound(to_mark_failed);
     }
+
+    m_chainman.CheckBlockIndex();
+
 
     // Only notify about a new block tip if the active chain was modified.
     if (pindex_was_in_chain) {
@@ -5366,6 +5367,9 @@ void ChainstateManager::CheckBlockIndex()
             // Checks for not-invalid blocks.
             assert((pindex->nStatus & BLOCK_FAILED_MASK) == 0); // The failed mask cannot be set for blocks without invalid parents.
         }
+        else {
+            assert((pindex->nStatus & BLOCK_FAILED_MASK)); // Descendants of invalid blocks should also be marked as invalid
+        }
         // Make sure m_chain_tx_count sum is correctly computed.
         if (!pindex->pprev) {
             // If no previous block, nTx and m_chain_tx_count must be the same.
@@ -5378,6 +5382,8 @@ void ChainstateManager::CheckBlockIndex()
             // block, and must be set if it is.
             assert((pindex->m_chain_tx_count != 0) == (pindex == snap_base));
         }
+        // There should be no block with more work than m_best_header, unless it's known to be invalid
+        assert((pindex->nStatus & BLOCK_FAILED_MASK) || pindex->nChainWork <= m_best_header->nChainWork);
 
         // Chainstate-specific checks on setBlockIndexCandidates
         for (auto c : GetAll()) {
