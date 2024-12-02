@@ -5320,6 +5320,7 @@ void ChainstateManager::CheckBlockIndex()
     // are not yet validated.
     CChain best_hdr_chain;
     assert(m_best_header);
+    assert(!(m_best_header->nStatus & BLOCK_FAILED_MASK));
     best_hdr_chain.SetTip(*m_best_header);
 
     std::multimap<CBlockIndex*,CBlockIndex*> forward;
@@ -5434,6 +5435,9 @@ void ChainstateManager::CheckBlockIndex()
             // Checks for not-invalid blocks.
             assert((pindex->nStatus & BLOCK_FAILED_MASK) == 0); // The failed mask cannot be set for blocks without invalid parents.
         }
+        else {
+            assert((pindex->nStatus & BLOCK_FAILED_MASK)); // Descendants of invalid blocks must also be marked as invalid
+        }
         // Make sure m_chain_tx_count sum is correctly computed.
         if (!pindex->pprev) {
             // If no previous block, nTx and m_chain_tx_count must be the same.
@@ -5446,6 +5450,8 @@ void ChainstateManager::CheckBlockIndex()
             // block, and must be set if it is.
             assert((pindex->m_chain_tx_count != 0) == (pindex == snap_base));
         }
+        // There should be no block with more work than m_best_header, unless it's known to be invalid
+        assert((pindex->nStatus & BLOCK_FAILED_MASK) || pindex->nChainWork <= m_best_header->nChainWork);
 
         // Chainstate-specific checks on setBlockIndexCandidates
         for (auto c : GetAll()) {
