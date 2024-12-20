@@ -5380,10 +5380,16 @@ void ChainstateManager::CheckBlockIndex()
         // There should only be an nTx value if we have
         // actually seen a block's transactions.
         assert(((pindex->nStatus & BLOCK_VALID_MASK) >= BLOCK_VALID_TRANSACTIONS) == (pindex->nTx > 0)); // This is pruning-independent.
+
         // All parents having had data (at some point) is equivalent to all parents being VALID_TRANSACTIONS, which is equivalent to HaveNumChainTxs().
         // HaveNumChainTxs will also be set in the assumeutxo snapshot block from snapshot metadata.
-        assert((pindexFirstNeverProcessed == nullptr || pindex == snap_base) == pindex->HaveNumChainTxs());
-        assert((pindexFirstNotTransactionsValid == nullptr || pindex == snap_base) == pindex->HaveNumChainTxs());
+        // This does not hold in a special edge case where we receive data for a parent of a pruned block. In this case HaveNumChainTxs cannot be set for the child
+        // because the blocks was removed from m_unlinked_blocks during pruning.
+        bool pruned_but_never_connected = pindexFirstNotScriptsValid && !(pindex->nStatus & BLOCK_HAVE_DATA);
+        if (!pruned_but_never_connected) {
+            assert((pindexFirstNeverProcessed == nullptr || pindex == snap_base) == pindex->HaveNumChainTxs());
+            assert((pindexFirstNotTransactionsValid == nullptr || pindex == snap_base) == pindex->HaveNumChainTxs());
+        }
         assert(pindex->nHeight == nHeight); // nHeight must be consistent.
         assert(pindex->pprev == nullptr || pindex->nChainWork >= pindex->pprev->nChainWork); // For every block except the genesis block, the chainwork must be larger than the parent's.
         assert(nHeight < 2 || (pindex->pskip && (pindex->pskip->nHeight < nHeight))); // The pskip pointer must point back for all but the first 2 blocks.
@@ -5401,7 +5407,7 @@ void ChainstateManager::CheckBlockIndex()
             assert(pindex->m_chain_tx_count == pindex->nTx);
         } else if (pindex->pprev->m_chain_tx_count > 0 && pindex->nTx > 0) {
             // If previous m_chain_tx_count is set and number of transactions in block is known, sum must be set.
-            assert(pindex->m_chain_tx_count == pindex->nTx + pindex->pprev->m_chain_tx_count);
+            if (!pruned_but_never_connected) assert(pindex->m_chain_tx_count == pindex->nTx + pindex->pprev->m_chain_tx_count);
         } else {
             // Otherwise m_chain_tx_count should only be set if this is a snapshot
             // block, and must be set if it is.
