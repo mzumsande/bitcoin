@@ -27,10 +27,12 @@ from test_framework.p2p import (
 class TimedPeer(P2PDataStore):
     def __init__(self, time):
         self.response_time = time
+        self.last_block = None
         super().__init__()
 
     def on_getdata(self, message):
         super().on_getdata(message, wait_time=self.response_time)
+        self.last_block = message.inv[-1].hash
 
     def on_getheaders(self, message):
         pass
@@ -43,13 +45,14 @@ class P2PStallingTest(BitcoinTestFramework):
 
     def run_test(self):
         #Create some blocks
-        NUM_BLOCKS = 5000
-        NUM_SLOW_PEERS = 2
-        NUM_FAST_PEERS = 6
+        NUM_BLOCKS = 10000
+        NUM_SLOW_PEERS = 1
+        NUM_FAST_PEERS = 7
         node = self.nodes[0]
         tip = int(node.getbestblockhash(), 16)
         blocks = []
         peers = []
+        block_list = []
         height = 1
         block_time = node.getblock(node.getbestblockhash())['time'] + 1
         self.log.info("Prepare blocks without sending them to the node")
@@ -61,16 +64,19 @@ class P2PStallingTest(BitcoinTestFramework):
             block_time += 1
             height += 1
             block_dict[blocks[-1].sha256] = blocks[-1]
+            block_list.append(blocks[-1].sha256)
 
         self.log.info("Connect peers")
         p2p_id = 0
-        for _ in range(1, NUM_SLOW_PEERS):
+        for _ in range(NUM_SLOW_PEERS):
             p2p_id += 1
-            peers.append(node.add_outbound_p2p_connection(TimedPeer(time = 10), p2p_idx=p2p_id, connection_type="outbound-full-relay"))
+            peers.append(node.add_outbound_p2p_connection(TimedPeer(time = 0), p2p_idx=p2p_id, connection_type="outbound-full-relay"))
+            self.log.info(f"added slow peer {p2p_id}")
 
-        for _ in range(1, NUM_FAST_PEERS):
+        for _ in range(NUM_FAST_PEERS):
             p2p_id += 1
-            peers.append(node.add_outbound_p2p_connection(TimedPeer(time = 0.1), p2p_idx=p2p_id, connection_type="outbound-full-relay"))
+            peers.append(node.add_outbound_p2p_connection(TimedPeer(time = 0), p2p_idx=p2p_id, connection_type="outbound-full-relay"))
+            self.log.info(f"added fast peer {p2p_id}")
 
         for peer in peers:
             peer.block_store = block_dict
@@ -89,7 +95,13 @@ class P2PStallingTest(BitcoinTestFramework):
                 peer.send_message(headers_message)
 
         self.log.info("Wait for all blocks to arrive")
-        self.wait_until(lambda: node.getblockcount() >= NUM_BLOCKS - 1, timeout=900)
+        block_count = node.getblockcount()
+        while (block_count < NUM_BLOCKS):
+            time.sleep(2)
+            slow_height= block_list.index(peers[0].last_block) + 1
+            fast_height = block_list.index(peers[1].last_block) + 1
+            block_count = node.getblockcount()
+            self.log.info(f"chain: {block_count}/{NUM_BLOCKS} current slow {slow_height} fast {fast_height} dist {fast_height - slow_height}")
 
         self.log.info("Connection stats:")
 
