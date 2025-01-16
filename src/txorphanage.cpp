@@ -245,6 +245,17 @@ void TxOrphanage::EraseForBlock(const CBlock& block)
         }
         LogDebug(BCLog::TXPACKAGES, "Erased %d orphan transaction(s) included or conflicted by block\n", nErased);
     }
+
+    for (auto const& o : m_orphans) {
+        for (auto parent : o.second.tx->vin) {
+            for (const CTransactionRef& ptx : block.vtx ) {
+                if (parent.prevout.hash == ptx->GetHash()) {
+                    LogDebug(BCLog::TXPACKAGES, "Potential orphan parent %i included in a block - added to workset\n", ptx->ToString());
+                    AddChildrenToWorkSet(*ptx);
+                }
+            }
+        }
+    }
 }
 
 std::vector<CTransactionRef> TxOrphanage::GetChildrenFromSamePeer(const CTransactionRef& parent, NodeId nodeid) const
