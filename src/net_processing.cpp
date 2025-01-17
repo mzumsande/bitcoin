@@ -1565,6 +1565,14 @@ void PeerManagerImpl::ReattemptInitialBroadcast(CScheduler& scheduler)
 void PeerManagerImpl::FinalizeNode(const CNode& node)
 {
     NodeId nodeid = node.GetId();
+    PeerRef peer = GetPeerRef(nodeid);
+    int num_resolved{0};
+    while(true) {
+        if (!ProcessOrphanTx(*peer)) break;
+        num_resolved++;
+    }
+    if(num_resolved > 0) LogPrintf("MZ resolved %i orphans from disconnecting peer", num_resolved);
+
     {
     LOCK(cs_main);
     {
