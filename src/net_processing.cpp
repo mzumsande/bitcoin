@@ -3086,11 +3086,11 @@ bool PeerManagerImpl::ProcessOrphanTx(Peer& peer)
         const Wtxid& orphan_wtxid = porphanTx->GetWitnessHash();
 
         if (result.m_result_type == MempoolAcceptResult::ResultType::VALID) {
-            LogDebug(BCLog::TXPACKAGES, "   accepted orphan tx %s (wtxid=%s)\n", orphanHash.ToString(), orphan_wtxid.ToString());
+            LogPrintf("   accepted orphan tx %s (wtxid=%s)\n", orphanHash.ToString(), orphan_wtxid.ToString());
             ProcessValidTx(peer.m_id, porphanTx, result.m_replaced_transactions);
             return true;
         } else if (state.GetResult() != TxValidationResult::TX_MISSING_INPUTS) {
-            LogDebug(BCLog::TXPACKAGES, "   invalid orphan tx %s (wtxid=%s) from peer=%d. %s\n",
+            LogPrintf("   invalid orphan tx %s (wtxid=%s) from peer=%d. %s\n",
                 orphanHash.ToString(),
                 orphan_wtxid.ToString(),
                 peer.m_id,
@@ -3103,6 +3103,13 @@ bool PeerManagerImpl::ProcessOrphanTx(Peer& peer)
                 ProcessInvalidTx(peer.m_id, porphanTx, state, /*first_time_failure=*/false);
             }
             return true;
+        }
+        else {
+            LogPrintf("unsuccessful orphan resolution tx %s (wtxid=%s) from peer=%d. %s\n",
+            orphanHash.ToString(),
+            orphan_wtxid.ToString(),
+            peer.m_id,
+            state.ToString());
         }
     }
 

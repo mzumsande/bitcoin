@@ -250,7 +250,7 @@ void TxOrphanage::EraseForBlock(const CBlock& block)
         for (auto parent : o.second.tx->vin) {
             for (const CTransactionRef& ptx : block.vtx ) {
                 if (parent.prevout.hash == ptx->GetHash()) {
-                    LogDebug(BCLog::TXPACKAGES, "Potential orphan parent %i included in a block - added to workset\n", ptx->ToString());
+                    LogPrintf("MZ Potential orphan parent %i included in a block - added to workset\n", ptx->GetHash().ToString());
                     AddChildrenToWorkSet(*ptx);
                 }
             }
