@@ -6,6 +6,11 @@
 import time
 
 from test_framework.mempool_util import tx_in_orphanage
+from test_framework.blocktools import (
+    create_block,
+    create_coinbase,
+    add_witness_commitment,
+)
 from test_framework.messages import (
     CInv,
     CTxInWitness,
@@ -16,6 +21,7 @@ from test_framework.messages import (
     msg_inv,
     msg_notfound,
     msg_tx,
+    msg_block,
     tx_from_hex,
 )
 from test_framework.p2p import (
@@ -798,6 +804,35 @@ class OrphanHandlingTest(BitcoinTestFramework):
         assert orphan["txid"] in final_mempool
         assert tx_replacer_C["txid"] in final_mempool
 
+    @cleanup
+    def test_orphan_parent_in_block(self):
+        node = self.nodes[0]
+        peer = node.add_p2p_connection(PeerTxRelayer())
+
+        self.log.info("Test orphan parent requests with a mixture of confirmed, in-mempool and missing parents")
+        # This UTXO is unconfirmed and missing.
+        missing_tx = self.wallet.create_self_transfer()
+        utxo_unconf_missing = missing_tx["new_utxo"]
+        orphan = self.wallet.create_self_transfer_multi(utxos_to_spend=[utxo_unconf_missing])
+        self.relay_transaction(peer, orphan["tx"])
+
+        assert tx_in_orphanage(node, orphan["tx"])
+
+        # Put parent in a block
+        best_block = node.getblock(node.getbestblockhash())
+        tip = int(node.getbestblockhash(), 16)
+        height = best_block["height"] + 1
+        block_time = best_block["time"] + 1
+        assert_equal(len(node.getorphantxs()), 1)
+
+        b = create_block(tip, create_coinbase(height), block_time, txlist=[missing_tx["hex"]])
+        add_witness_commitment(b)
+        b.solve()
+        peer.send_and_ping(msg_block(b))
+
+        self.wait_until(lambda: len(node.getorphantxs()) == 0)
+
+
     def run_test(self):
         self.nodes[0].setmocktime(int(time.time()))
         self.wallet_nonsegwit = MiniWallet(self.nodes[0], mode=MiniWalletMode.RAW_P2PK)
@@ -805,6 +840,8 @@ class OrphanHandlingTest(BitcoinTestFramework):
         self.wallet = MiniWallet(self.nodes[0])
         self.generate(self.wallet, 160)
 
+        self.test_orphan_parent_in_block()
+        exit()
         self.test_arrival_timing_orphan()
         self.test_orphan_rejected_parents_exceptions()
         self.test_orphan_multiple_parents()
@@ -818,6 +855,7 @@ class OrphanHandlingTest(BitcoinTestFramework):
         self.test_orphan_handling_prefer_outbound()
         self.test_announcers_before_and_after()
         self.test_parents_change()
+        self.test_orphan_parent_in_block()
 
 
 if __name__ == '__main__':
