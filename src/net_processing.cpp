@@ -3324,6 +3324,9 @@ void PeerManagerImpl::ProcessCompactBlockTxns(CNode& pfrom, Peer& peer, const Bl
         }
 
         PartiallyDownloadedBlock& partialBlock = *range_flight.first->second.second->partialBlock;
+        for(auto txn: block_transactions.txn) {
+            LogPrintf("MZ Req tx %i wtx %i\n", txn->GetHash().ToString(), txn->GetWitnessHash().ToString());
+        }
         ReadStatus status = partialBlock.FillBlock(*pblock, block_transactions.txn);
         if (status == READ_STATUS_INVALID) {
             RemoveBlockRequest(block_transactions.blockhash, pfrom.GetId()); // Reset in-flight state in case Misbehaving does not result in a disconnect
