@@ -22,6 +22,7 @@
 #include <merkleblock.h>
 #include <netbase.h>
 #include <netmessagemaker.h>
+#include <node/blocktimes.h>
 #include <node/blockstorage.h>
 #include <node/timeoffsets.h>
 #include <node/txdownloadman.h>
@@ -176,6 +177,7 @@ struct QueuedBlock {
     const CBlockIndex* pindex;
     /** Optional, used for CMPCTBLOCK downloads */
     std::unique_ptr<PartiallyDownloadedBlock> partialBlock;
+    NodeClock::time_point request_time;
 };
 
 /**
@@ -257,6 +259,8 @@ struct Peer {
     /** Timestamp after which we will send the next BIP133 `feefilter` message
       * to the peer. */
     std::chrono::microseconds m_next_send_feefilter GUARDED_BY(NetEventsInterface::g_msgproc_mutex){0};
+
+    BlockTimes block_times;
 
     struct TxRelay {
         mutable RecursiveMutex m_bloom_filter_mutex;
@@ -1174,6 +1178,11 @@ void PeerManagerImpl::RemoveBlockRequest(const uint256& hash, std::optional<Node
             // First block on the queue was received, update the start download time for the next one
             state.m_downloading_since = std::max(state.m_downloading_since, GetTime<std::chrono::microseconds>());
         }
+        if (from_peer) {
+            int time_diff = std::chrono::duration_cast<std::chrono::seconds> (NodeClock::now() - list_it->request_time).count();
+            auto peer = GetPeerRef(*from_peer);
+            peer->block_times.Add(time_diff);
+        }
         state.vBlocksInFlight.erase(list_it);
 
         if (state.vBlocksInFlight.empty()) {
@@ -1209,7 +1218,7 @@ bool PeerManagerImpl::BlockRequested(NodeId nodeid, const CBlockIndex& block, st
     RemoveBlockRequest(hash, nodeid);
 
     std::list<QueuedBlock>::iterator it = state->vBlocksInFlight.insert(state->vBlocksInFlight.end(),
-            {&block, std::unique_ptr<PartiallyDownloadedBlock>(pit ? new PartiallyDownloadedBlock(&m_mempool) : nullptr)});
+            {&block, std::unique_ptr<PartiallyDownloadedBlock>(pit ? new PartiallyDownloadedBlock(&m_mempool) : nullptr), NodeClock::now()});
     if (state->vBlocksInFlight.size() == 1) {
         // We're starting a block download (batch) from this peer.
         state->m_downloading_since = GetTime<std::chrono::microseconds>();
