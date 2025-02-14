@@ -3359,7 +3359,7 @@ bool CWallet::AttachChain(const std::shared_ptr<CWallet>& walletInstance, interf
         {
             WalletRescanReserver reserver(*walletInstance);
             if (!reserver.reserve() ||
-                (ScanResult::SUCCESS != walletInstance->ScanForWalletTransactions(chain.getBlockHash(rescan_height), rescan_height, /*max_height=*/{}, reserver, /*fUpdate=*/true, /*save_progress=*/true, /*scan_mempool=*/true).status)) {
+                (ScanResult::SUCCESS != walletInstance->ScanForWalletTransactions(chain.getBlockHash(rescan_height), rescan_height, tip_height, reserver, /*fUpdate=*/true, /*save_progress=*/true, /*scan_mempool=*/true).status)) {
                 error = _("Failed to rescan the wallet during initialization");
                 return false;
             }
