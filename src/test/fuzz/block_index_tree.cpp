@@ -38,6 +38,7 @@ void initialize_block_index_tree()
 
 FUZZ_TARGET(block_index_tree, .init = initialize_block_index_tree)
 {
+    SeedRandomStateForTest(SeedRand::ZEROS); // Needed for InvalidateBlock / DisconnectPool
     FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
     SetMockTime(ConsumeTime(fuzzed_data_provider));
     ChainstateManager& chainman = *g_setup->m_node.chainman;
@@ -167,6 +168,19 @@ FUZZ_TARGET(block_index_tree, .init = initialize_block_index_tree)
                         }
                     }
                 }
+            },
+            [&] {
+                // InvalidateBlock
+                CBlockIndex *prev_block = PickValue(fuzzed_data_provider, blocks);
+                BlockValidationState state;
+                chainman.ActiveChainstate().InvalidateBlock(state, prev_block);
+            },
+            [&] {
+                // ReconsiderBlock
+                LOCK(cs_main);
+                CBlockIndex *prev_block = PickValue(fuzzed_data_provider, blocks);
+                chainman.ActiveChainstate().ResetBlockFailureFlags(prev_block);
+                chainman.RecalculateBestHeader();
             });
     }
     chainman.CheckBlockIndex();
