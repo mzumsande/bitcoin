@@ -92,4 +92,62 @@ std::optional<fs::path> FindSnapshotChainstateDir(const fs::path& data_dir)
     return std::nullopt;
 }
 
+
+bool WriteBackgroundSerhash(fs::path chaindir, uint256 hash)
+{
+    AssertLockHeld(::cs_main);
+    const fs::path write_to = chaindir / node::SNAPSHOT_SERHASH_FILENAME;
+
+    FILE* file{fsbridge::fopen(write_to, "wb")};
+    AutoFile afile{file};
+    if (afile.IsNull()) {
+        LogPrintf("[snapshot] failed to open serhash file for writing: %s\n",
+                  fs::PathToString(write_to));
+        return false;
+    }
+    afile << hash;
+
+    if (afile.fclose() != 0) {
+        LogPrintf("[snapshot] failed to close serhash file %s after writing\n",
+                  fs::PathToString(write_to));
+        return false;
+    }
+    return true;
+}
+
+
+std::optional<uint256> ReadBackgroundSerhash(fs::path chaindir)
+{
+    if (!fs::exists(chaindir)) {
+        LogPrintf("[snapshot] cannot read cached snapshot serhash: no chainstate dir "
+            "exists at path %s\n", fs::PathToString(chaindir));
+        return std::nullopt;
+    }
+    const fs::path read_from = chaindir / node::SNAPSHOT_SERHASH_FILENAME;
+    const std::string read_from_str = fs::PathToString(read_from);
+
+    if (!fs::exists(read_from)) {
+        //this is expected
+        return std::nullopt;
+    }
+
+    uint256 serhash;
+    FILE* file{fsbridge::fopen(read_from, "rb")};
+    AutoFile afile{file};
+    if (afile.IsNull()) {
+        LogPrintf("[snapshot] failed to open serhash file for reading: %s\n",
+            read_from_str);
+        return std::nullopt;
+    }
+    afile >> serhash;
+
+    int64_t position = afile.tell();
+    afile.seek(0, SEEK_END);
+    if (position != afile.tell()) {
+        LogPrintf("[snapshot] warning: unexpected trailing data in %s\n", read_from_str);
+    }
+    return serhash;
+}
+
+
 } // namespace node

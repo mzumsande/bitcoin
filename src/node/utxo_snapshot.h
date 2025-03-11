@@ -107,6 +107,7 @@ public:
 //! Because we only allow loading a single snapshot at a time, there will only be one
 //! chainstate directory with this filename present within it.
 const fs::path SNAPSHOT_BLOCKHASH_FILENAME{"base_blockhash"};
+const fs::path SNAPSHOT_SERHASH_FILENAME{"cached_serhash"};
 
 //! Write out the blockhash of the snapshot base block that was used to construct
 //! this chainstate. This value is read in during subsequent initializations and
@@ -114,10 +115,17 @@ const fs::path SNAPSHOT_BLOCKHASH_FILENAME{"base_blockhash"};
 bool WriteSnapshotBaseBlockhash(Chainstate& snapshot_chainstate)
     EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
 
+bool WriteBackgroundSerhash(fs::path chaindir, uint256 hash)
+    EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
+
+
 //! Read the blockhash of the snapshot base block that was used to construct the
 //! chainstate.
 std::optional<uint256> ReadSnapshotBaseBlockhash(fs::path chaindir)
     EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
+
+std::optional<uint256> ReadBackgroundSerhash(fs::path chaindir)
+        EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
 
 //! Suffix appended to the chainstate (leveldb) dir when created based upon
 //! a snapshot.
