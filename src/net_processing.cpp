@@ -5875,6 +5875,7 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                     vToDownload, from_tip,
                     Assert(m_chainman.GetSnapshotBaseBlock()));
             }
+            if (vToDownload.size() > 0) LogPrintf("MZ Requesting %i new blocks from peer %d\n", vToDownload.size(), pto->GetId());
             for (const CBlockIndex *pindex : vToDownload) {
                 uint32_t nFetchFlags = GetFetchFlags(*peer);
                 vGetData.emplace_back(MSG_BLOCK | nFetchFlags, pindex->GetBlockHash());
@@ -5885,7 +5886,7 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
             if (state.vBlocksInFlight.empty() && staller != -1) {
                 if (State(staller)->m_stalling_since == 0us) {
                     State(staller)->m_stalling_since = current_time;
-                    LogDebug(BCLog::NET, "Stall started peer=%d\n", staller);
+                    LogPrintf("Stall started peer=%d\n", staller);
                 }
             }
         }
