@@ -1332,6 +1332,8 @@ RPCHelpMan getblockchaininfo()
     LOCK(cs_main);
     Chainstate& active_chainstate = chainman.ActiveChainstate();
 
+    chainman.m_validation_timer.printResults();
+
     const CBlockIndex& tip{*CHECK_NONFATAL(active_chainstate.m_chain.Tip())};
     const int height{tip.nHeight};
     UniValue obj(UniValue::VOBJ);

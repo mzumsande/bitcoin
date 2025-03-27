@@ -4615,9 +4615,11 @@ bool ChainstateManager::ProcessNewBlock(const std::shared_ptr<const CBlock>& blo
 
     NotifyHeaderTip();
 
+    m_validation_timer.startInside();
     BlockValidationState state; // Only used to report errors, not invalidity - ignore it
     if (!ActiveChainstate().ActivateBestChain(state, block)) {
         LogError("%s: ActivateBestChain failed (%s)\n", __func__, state.ToString());
+        m_validation_timer.stopInside();
         return false;
     }
 
@@ -4625,8 +4627,10 @@ bool ChainstateManager::ProcessNewBlock(const std::shared_ptr<const CBlock>& blo
     BlockValidationState bg_state;
     if (bg_chain && !bg_chain->ActivateBestChain(bg_state, block)) {
         LogError("%s: [background] ActivateBestChain failed (%s)\n", __func__, bg_state.ToString());
+        m_validation_timer.stopInside();
         return false;
      }
+     m_validation_timer.stopInside();
 
     return true;
 }
@@ -6310,6 +6314,7 @@ ChainstateManager::ChainstateManager(const util::SignalInterrupt& interrupt, Opt
 ChainstateManager::~ChainstateManager()
 {
     LOCK(::cs_main);
+    m_validation_timer.printResults();
 
     m_versionbitscache.Clear();
 }

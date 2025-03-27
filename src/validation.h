@@ -32,6 +32,7 @@
 #include <util/hasher.h>
 #include <util/result.h>
 #include <util/translation.h>
+#include <validationtimer.h>
 #include <versionbits.h>
 
 #include <atomic>
@@ -968,6 +969,8 @@ public:
     using Options = kernel::ChainstateManagerOpts;
 
     explicit ChainstateManager(const util::SignalInterrupt& interrupt, Options options, node::BlockManager::Options blockman_options);
+
+    ValidationTimer m_validation_timer;
 
     //! Function to restart active indexes; set dynamically to avoid a circular
     //! dependency on `base/index.cpp`.
