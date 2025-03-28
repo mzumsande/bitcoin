@@ -5886,7 +5886,7 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
             if (state.vBlocksInFlight.empty() && staller != -1) {
                 if (State(staller)->m_stalling_since == 0us) {
                     State(staller)->m_stalling_since = current_time;
-                    LogPrintf("Stall started peer=%d\n", staller);
+                    LogPrintf("Stall started from peer=%d staller=%d\n", pto->GetId(), staller);
                 }
             }
         }
