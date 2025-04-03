@@ -48,6 +48,7 @@ FUZZ_TARGET(block_index_tree, .init = initialize_block_index_tree)
     std::vector<CBlockIndex*> blocks;
     blocks.push_back(genesis);
     bool abort_run{false};
+    bool verbose{false};
 
     LIMITED_WHILE(fuzzed_data_provider.ConsumeBool(), 1000)
     {
@@ -63,6 +64,7 @@ FUZZ_TARGET(block_index_tree, .init = initialize_block_index_tree)
                     CBlockIndex* index = blockman.AddToBlockIndex(header, chainman.m_best_header);
                     assert(index->nStatus & BLOCK_VALID_TREE);
                     blocks.push_back(index);
+                    if(verbose) std::cout << "MZ rec header:" << index->GetBlockHash().ToString() << "|" << index->nHeight << std::endl;
                 }
             },
             [&] {
@@ -75,6 +77,7 @@ FUZZ_TARGET(block_index_tree, .init = initialize_block_index_tree)
                         BlockValidationState state;
                         state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "consensus-invalid");
                         chainman.ActiveChainstate().InvalidBlockFound(index, state);
+                        if(verbose) std::cout << "MZ txns invalid:" << index->GetBlockHash().ToString() << "|" << index->nHeight << std::endl;
                     } else {
                         size_t nTx = fuzzed_data_provider.ConsumeIntegralInRange<size_t>(1, 1000);
                         CBlock block; // Dummy block, so that ReceivedBlockTransaction can infer a nTx value.
@@ -83,6 +86,7 @@ FUZZ_TARGET(block_index_tree, .init = initialize_block_index_tree)
                         chainman.ReceivedBlockTransactions(block, index, pos);
                         assert(index->nStatus & BLOCK_VALID_TRANSACTIONS);
                         assert(index->nStatus & BLOCK_HAVE_DATA);
+                        if(verbose) std::cout << "MZ txns valid:" << index->GetBlockHash().ToString() << "|" << index->nHeight << std::endl;
                     }
                 }
             },
@@ -92,6 +96,7 @@ FUZZ_TARGET(block_index_tree, .init = initialize_block_index_tree)
                 auto& chain = chainman.ActiveChain();
                 CBlockIndex* old_tip = chain.Tip();
                 assert(old_tip);
+                if(verbose) std::cout << "MZ ABC start; old tip:" << old_tip->GetBlockHash().ToString() << "|" << old_tip->nHeight << std::endl;
                 do {
                     CBlockIndex* best_tip = chainman.ActiveChainstate().FindMostWorkChain();
                     assert(best_tip);                   // Should at least return current tip
@@ -134,6 +139,7 @@ FUZZ_TARGET(block_index_tree, .init = initialize_block_index_tree)
                             }
                         }
                         chain.SetTip(*block);
+                        if(verbose) std::cout << "MZ ABC change tip:" << block->GetBlockHash().ToString() << "|" << block->nHeight << std::endl;
                         chainman.ActiveChainstate().PruneBlockIndexCandidates();
                         // ABC may release cs_main / not connect all blocks in one go - but only if we have at least much chain work as we had at the start.
                         if (block->nChainWork > old_tip->nChainWork && fuzzed_data_provider.ConsumeBool()) {
@@ -167,18 +173,21 @@ FUZZ_TARGET(block_index_tree, .init = initialize_block_index_tree)
                             blockman.m_blocks_unlinked.erase(_it);
                         }
                     }
+                    if(verbose) std::cout << "MZ prune:" << prune_block->GetBlockHash().ToString() << "|" << prune_block->nHeight << std::endl;
                 }
             },
             [&] {
                 // InvalidateBlock
                 CBlockIndex *prev_block = PickValue(fuzzed_data_provider, blocks);
                 BlockValidationState state;
+                if(verbose) std::cout << "MZ invalidateblock:" << prev_block->GetBlockHash().ToString() << "|" << prev_block->nHeight << std::endl;
                 chainman.ActiveChainstate().InvalidateBlock(state, prev_block);
             },
             [&] {
                 // ReconsiderBlock
                 LOCK(cs_main);
                 CBlockIndex *prev_block = PickValue(fuzzed_data_provider, blocks);
+                if(verbose) std::cout << "MZ reconsiderblock:" << prev_block->GetBlockHash().ToString() << "|" << prev_block->nHeight << std::endl;
                 chainman.ActiveChainstate().ResetBlockFailureFlags(prev_block);
                 chainman.RecalculateBestHeader();
             });
