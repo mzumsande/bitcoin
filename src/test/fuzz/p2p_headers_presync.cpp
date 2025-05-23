@@ -50,9 +50,8 @@ public:
         m_node.connman->Init(options);
     }
 
-    void ResetAndInitialize() EXCLUSIVE_LOCKS_REQUIRED(NetEventsInterface::g_msgproc_mutex);
-    void SendMessage(FuzzedDataProvider& fuzzed_data_provider, CSerializedNetMsg&& msg)
-        EXCLUSIVE_LOCKS_REQUIRED(NetEventsInterface::g_msgproc_mutex);
+    void ResetAndInitialize();
+    void SendMessage(FuzzedDataProvider& fuzzed_data_provider, CSerializedNetMsg&& msg);
 };
 
 void HeadersSyncSetup::ResetAndInitialize()
@@ -177,8 +176,6 @@ FUZZ_TARGET(p2p_headers_presync, .init = initialize)
     ChainstateManager& chainman = *g_testing_setup->m_node.chainman;
     CBlockHeader base{chainman.GetParams().GenesisBlock()};
     SetMockTime(base.nTime);
-
-    LOCK(NetEventsInterface::g_msgproc_mutex);
 
     g_testing_setup->ResetAndInitialize();
 
