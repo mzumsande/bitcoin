@@ -50,8 +50,6 @@ FUZZ_TARGET(process_messages, .init = initialize_process_messages)
     SetMockTime(1610000000); // any time to successfully reset ibd
     chainman.ResetIbd();
 
-    LOCK(NetEventsInterface::g_msgproc_mutex);
-
     std::vector<CNode*> peers;
     const auto num_peers_to_add = fuzzed_data_provider.ConsumeIntegralInRange(1, 3);
     for (int i = 0; i < num_peers_to_add; ++i) {

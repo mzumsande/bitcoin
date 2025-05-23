@@ -73,10 +73,9 @@ struct ConnmanTestMsg : public CConnman {
                    ServiceFlags remote_services,
                    ServiceFlags local_services,
                    int32_t version,
-                   bool relay_txs)
-        EXCLUSIVE_LOCKS_REQUIRED(NetEventsInterface::g_msgproc_mutex);
+                   bool relay_txs);
 
-    bool ProcessMessagesOnce(CNode& node) EXCLUSIVE_LOCKS_REQUIRED(NetEventsInterface::g_msgproc_mutex)
+    bool ProcessMessagesOnce(CNode& node)
     {
         return m_msgproc->ProcessMessages(&node, flagInterruptMsgProc);
     }

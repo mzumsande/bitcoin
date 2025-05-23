@@ -3023,12 +3023,8 @@ void CConnman::OpenNetworkConnection(const CAddress& addrConnect, bool fCountFai
         GetNodeCount(ConnectionDirection::Out));
 }
 
-Mutex NetEventsInterface::g_msgproc_mutex;
-
 void CConnman::ThreadMessageHandler()
 {
-    LOCK(NetEventsInterface::g_msgproc_mutex);
-
     while (!flagInterruptMsgProc)
     {
         bool fMoreWork = false;

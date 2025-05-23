@@ -1007,9 +1007,6 @@ private:
 class NetEventsInterface
 {
 public:
-    /** Mutex for anything that is only accessed via the msg processing thread */
-    static Mutex g_msgproc_mutex;
-
     /** Initialize a peer (setup state) */
     virtual void InitializeNode(const CNode& node, ServiceFlags our_services) = 0;
 
@@ -1029,7 +1026,7 @@ public:
     * @param[in]   interrupt       Interrupt condition for processing threads
     * @return                      True if there is more work to be done
     */
-    virtual bool ProcessMessages(CNode* pnode, std::atomic<bool>& interrupt) EXCLUSIVE_LOCKS_REQUIRED(g_msgproc_mutex) = 0;
+    virtual bool ProcessMessages(CNode* pnode, std::atomic<bool>& interrupt) = 0;
 
     /**
     * Send queued protocol messages to a given node.
@@ -1037,7 +1034,7 @@ public:
     * @param[in]   pnode           The node which we are sending messages to.
     * @return                      True if there is more work to be done
     */
-    virtual bool SendMessages(CNode* pnode) EXCLUSIVE_LOCKS_REQUIRED(g_msgproc_mutex) = 0;
+    virtual bool SendMessages(CNode* pnode) = 0;
 
 
 protected:
