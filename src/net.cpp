@@ -3023,7 +3023,7 @@ void CConnman::OpenNetworkConnection(const CAddress& addrConnect, bool fCountFai
         GetNodeCount(ConnectionDirection::Out));
 }
 
-void CConnman::ThreadMessageHandler()
+void CConnman::ThreadMessageHandler(bool incoming)
 {
     while (!flagInterruptMsgProc)
     {
@@ -3036,6 +3036,9 @@ void CConnman::ThreadMessageHandler()
             const NodesSnapshot snap{*this, /*shuffle=*/true};
 
             for (CNode* pnode : snap.Nodes()) {
+                if (pnode->IsInboundConn() != incoming){
+                    continue;
+                }
                 if (pnode->fDisconnect)
                     continue;
 
@@ -3370,7 +3373,9 @@ bool CConnman::Start(CScheduler& scheduler, const Options& connOptions)
     }
 
     // Process messages
-    threadMessageHandler = std::thread(&util::TraceThread, "msghand", [this] { ThreadMessageHandler(); });
+    threadMessageHandler_out = std::thread(&util::TraceThread, "msghand_out", [this] { ThreadMessageHandler(/*incoming=*/false); });
+    threadMessageHandler_in = std::thread(&util::TraceThread, "msghand_in", [this] { ThreadMessageHandler(/*incoming=*/true); });
+
 
     if (m_i2p_sam_session) {
         threadI2PAcceptIncoming =
@@ -3433,8 +3438,10 @@ void CConnman::StopThreads()
     if (threadI2PAcceptIncoming.joinable()) {
         threadI2PAcceptIncoming.join();
     }
-    if (threadMessageHandler.joinable())
-        threadMessageHandler.join();
+    if (threadMessageHandler_in.joinable())
+        threadMessageHandler_in.join();
+    if (threadMessageHandler_out.joinable())
+        threadMessageHandler_out.join();
     if (threadOpenConnections.joinable())
         threadOpenConnections.join();
     if (threadOpenAddedConnections.joinable())
