@@ -7,6 +7,7 @@
 
 #include <serialize.h>
 #include <span.h>
+#include <sync.h>
 
 #include <vector>
 
@@ -108,20 +109,22 @@ public:
 class CRollingBloomFilter
 {
 public:
-    CRollingBloomFilter(const unsigned int nElements, const double nFPRate);
+    CRollingBloomFilter(const unsigned int nElements, const double nFPRate) EXCLUSIVE_LOCKS_REQUIRED(!m_mutex);
 
-    void insert(std::span<const unsigned char> vKey);
-    bool contains(std::span<const unsigned char> vKey) const;
+    void insert(std::span<const unsigned char> vKey) EXCLUSIVE_LOCKS_REQUIRED(!m_mutex);
+    bool contains(std::span<const unsigned char> vKey) const EXCLUSIVE_LOCKS_REQUIRED(!m_mutex);
 
-    void reset();
+    void reset() EXCLUSIVE_LOCKS_REQUIRED(!m_mutex);
 
 private:
+    mutable Mutex m_mutex;
     int nEntriesPerGeneration;
     int nEntriesThisGeneration;
     int nGeneration;
     std::vector<uint64_t> data;
     unsigned int nTweak;
     int nHashFuncs;
+    void ResetInternal() EXCLUSIVE_LOCKS_REQUIRED(m_mutex);
 };
 
 #endif // BITCOIN_COMMON_BLOOM_H

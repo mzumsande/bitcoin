@@ -161,6 +161,7 @@ bool CBloomFilter::IsRelevantAndUpdate(const CTransaction& tx)
 
 CRollingBloomFilter::CRollingBloomFilter(const unsigned int nElements, const double fpRate)
 {
+    LOCK(m_mutex);
     double logFpRate = log(fpRate);
     /* The optimal number of hash functions is log(fpRate) / log(0.5), but
      * restrict it to the range 1-50. */
@@ -183,7 +184,7 @@ CRollingBloomFilter::CRollingBloomFilter(const unsigned int nElements, const dou
      * These bits are stored in separate integers: position P corresponds to bit
      * (P & 63) of the integers data[(P >> 6) * 2] and data[(P >> 6) * 2 + 1]. */
     data.resize(((nFilterBits + 63) / 64) << 1);
-    reset();
+    ResetInternal();
 }
 
 /* Similar to CBloomFilter::Hash */
@@ -194,6 +195,7 @@ static inline uint32_t RollingBloomHash(unsigned int nHashNum, uint32_t nTweak, 
 
 void CRollingBloomFilter::insert(std::span<const unsigned char> vKey)
 {
+    LOCK(m_mutex);
     if (nEntriesThisGeneration == nEntriesPerGeneration) {
         nEntriesThisGeneration = 0;
         nGeneration++;
@@ -225,6 +227,7 @@ void CRollingBloomFilter::insert(std::span<const unsigned char> vKey)
 
 bool CRollingBloomFilter::contains(std::span<const unsigned char> vKey) const
 {
+    LOCK(m_mutex);
     for (int n = 0; n < nHashFuncs; n++) {
         uint32_t h = RollingBloomHash(n, nTweak, vKey);
         int bit = h & 0x3F;
@@ -239,6 +242,11 @@ bool CRollingBloomFilter::contains(std::span<const unsigned char> vKey) const
 
 void CRollingBloomFilter::reset()
 {
+    LOCK(m_mutex);
+    ResetInternal();
+}
+
+void CRollingBloomFilter::ResetInternal() {
     nTweak = FastRandomContext().rand<unsigned int>();
     nEntriesThisGeneration = 0;
     nGeneration = 1;
