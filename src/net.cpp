@@ -3036,7 +3036,8 @@ void CConnman::ThreadMessageHandler(bool incoming)
             const NodesSnapshot snap{*this, /*shuffle=*/true};
 
             for (CNode* pnode : snap.Nodes()) {
-                if (pnode->IsInboundConn() != incoming){
+                //if (pnode->IsInboundConn() != incoming){
+                if ((pnode->GetId() % 2) != incoming){ // try to see what fails if we don't separate in/out
                     continue;
                 }
                 if (pnode->fDisconnect)
