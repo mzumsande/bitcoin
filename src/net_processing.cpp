@@ -332,8 +332,10 @@ struct Peer {
         return WITH_LOCK(m_tx_relay_mutex, return m_tx_relay.get());
     };
 
+    /** Locks addrs send timers and m_addrs_to_send vector  */
+    mutable Mutex m_addr_send_mutex;
     /** A vector of addresses to send to the peer, limited to MAX_ADDR_TO_SEND. */
-    std::vector<CAddress> m_addrs_to_send;
+    std::vector<CAddress> m_addrs_to_send GUARDED_BY(m_addr_send_mutex);
     /** Probabilistic filter to track recent addr messages relayed with this
      *  peer. Used to avoid relaying redundant addresses to this peer.
      *
@@ -361,12 +363,10 @@ struct Peer {
     std::atomic_bool m_addr_relay_enabled{false};
     /** Whether a getaddr request to this peer is outstanding. */
     bool m_getaddr_sent{false};
-    /** Guards address sending timers. */
-    mutable Mutex m_addr_send_times_mutex;
     /** Time point to send the next ADDR message to this peer. */
-    std::chrono::microseconds m_next_addr_send GUARDED_BY(m_addr_send_times_mutex){0};
+    std::chrono::microseconds m_next_addr_send GUARDED_BY(m_addr_send_mutex){0};
     /** Time point to possibly re-announce our local address to this peer. */
-    std::chrono::microseconds m_next_local_addr_send GUARDED_BY(m_addr_send_times_mutex){0};
+    std::chrono::microseconds m_next_local_addr_send GUARDED_BY(m_addr_send_mutex){0};
     /** Whether the peer has signaled support for receiving ADDRv2 (BIP155)
      *  messages, indicating a preference to receive ADDRv2 instead of ADDR ones. */
     std::atomic_bool m_wants_addrv2{false};
@@ -1107,13 +1107,15 @@ void PeerManagerImpl::AddAddressKnown(Peer& peer, const CAddress& addr)
 
 void PeerManagerImpl::PushAddress(Peer& peer, const CAddress& addr)
 {
+    LOCK(peer.m_addr_send_mutex);
+    LOCK(m_rng_mutex);
     // Known checking here is only to save space from duplicates.
     // Before sending, we'll filter it again for known addresses that were
     // added after addresses were pushed.
     assert(peer.m_addr_known);
     if (addr.IsValid() && !peer.m_addr_known->contains(addr.GetKey()) && IsAddrCompatible(peer, addr)) {
         if (peer.m_addrs_to_send.size() >= MAX_ADDR_TO_SEND) {
-            WITH_LOCK(m_rng_mutex, peer.m_addrs_to_send[m_rng.randrange(peer.m_addrs_to_send.size())] = addr);
+            peer.m_addrs_to_send[m_rng.randrange(peer.m_addrs_to_send.size())] = addr;
         } else {
             peer.m_addrs_to_send.push_back(addr);
         }
@@ -4712,7 +4714,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         }
         peer->m_getaddr_recvd = true;
 
-        peer->m_addrs_to_send.clear();
+        WITH_LOCK(peer->m_addr_send_mutex, peer->m_addrs_to_send.clear());
         std::vector<CAddress> vAddr;
         if (pfrom.HasPermission(NetPermissionFlags::Addr)) {
             vAddr = m_connman.GetAddresses(MAX_ADDR_TO_SEND, MAX_PCT_ADDR_TO_SEND, /*network=*/std::nullopt);
@@ -5312,7 +5314,8 @@ void PeerManagerImpl::MaybeSendAddr(CNode& node, Peer& peer, std::chrono::micros
     // Nothing to do for non-address-relay peers
     if (!peer.m_addr_relay_enabled) return;
 
-    LOCK(peer.m_addr_send_times_mutex);
+    LOCK(cs_main);
+    LOCK(peer.m_addr_send_mutex);
     // Periodically advertise our local address to the peer.
     if (fListen && !m_chainman.IsInitialBlockDownload() &&
         peer.m_next_local_addr_send < current_time) {
