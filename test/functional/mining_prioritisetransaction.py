@@ -28,7 +28,6 @@ class PrioritiseTransactionTest(BitcoinTestFramework):
         self.extra_args = [[
             "-printpriority=1",
         ]] * self.num_nodes
-        self.supports_cli = False
 
     def clear_prioritisation(self, node):
         for txid, info in node.getprioritisedtransactions().items():

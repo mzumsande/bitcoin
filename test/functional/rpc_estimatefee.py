@@ -21,15 +21,13 @@ class EstimateFeeTest(BitcoinTestFramework):
         assert_raises_rpc_error(-1, "estimatesmartfee", self.nodes[0].estimatesmartfee)
         assert_raises_rpc_error(-1, "estimaterawfee", self.nodes[0].estimaterawfee)
 
-        # cli handles wrong types differently
-        if not self.options.usecli:
-            # wrong type for conf_target
-            assert_raises_rpc_error(-3, "JSON value of type string is not of expected type number", self.nodes[0].estimatesmartfee, 'foo')
-            assert_raises_rpc_error(-3, "JSON value of type string is not of expected type number", self.nodes[0].estimaterawfee, 'foo')
-            # wrong type for estimatesmartfee(estimate_mode)
-            assert_raises_rpc_error(-3, "JSON value of type number is not of expected type string", self.nodes[0].estimatesmartfee, 1, 1)
-            # wrong type for estimaterawfee(threshold)
-            assert_raises_rpc_error(-3, "JSON value of type string is not of expected type number", self.nodes[0].estimaterawfee, 1, 'foo')
+        # wrong type for conf_target
+        assert_raises_rpc_error(-3, "JSON value of type string is not of expected type number", self.nodes[0].estimatesmartfee, 'foo')
+        assert_raises_rpc_error(-3, "JSON value of type string is not of expected type number", self.nodes[0].estimaterawfee, 'foo')
+        # wrong type for estimatesmartfee(estimate_mode)
+        assert_raises_rpc_error(-3, "JSON value of type number is not of expected type string", self.nodes[0].estimatesmartfee, 1, 1)
+        # wrong type for estimaterawfee(threshold)
+        assert_raises_rpc_error(-3, "JSON value of type string is not of expected type number", self.nodes[0].estimaterawfee, 1, 'foo')
 
         assert_raises_rpc_error(-8, 'Invalid estimate_mode parameter, must be one of: "unset", "economical", "conservative"', self.nodes[0].estimatesmartfee, 1, 'foo')
         # extra params

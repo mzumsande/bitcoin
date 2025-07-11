@@ -58,7 +58,6 @@ class MempoolAcceptanceTest(BitcoinTestFramework):
         self.extra_args = [[
             '-txindex','-permitbaremultisig=0',
         ]] * self.num_nodes
-        self.supports_cli = False
 
     def check_mempool_result(self, result_expected, *args, **kwargs):
         """Wrapper to check result of testmempoolaccept on node_0's mempool"""

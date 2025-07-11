@@ -66,7 +66,6 @@ class NetTest(BitcoinTestFramework):
         # Specify a non-working proxy to make sure no actual connections to public IPs are attempted
         for args in self.extra_args:
             args.append("-proxy=127.0.0.1:1")
-        self.supports_cli = False
 
     def run_test(self):
         # We need miniwallet to make a transaction
