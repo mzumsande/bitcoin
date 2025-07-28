@@ -20,6 +20,7 @@
 #include <crypto/siphash.h>
 #include <deploymentstatus.h>
 #include <flatfile.h>
+#include <fstream>
 #include <headerssync.h>
 #include <index/blockfilterindex.h>
 #include <kernel/chain.h>
@@ -817,6 +818,7 @@ private:
 
     /** Number of nodes with fSyncStarted. */
     int nSyncStarted GUARDED_BY(cs_main) = 0;
+
 
     /** Hash of the last block we received via INV */
     uint256 m_last_block_inv_triggering_headers_sync GUARDED_BY(g_msgproc_mutex){};
@@ -3896,6 +3898,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         uint64_t num_proc = 0;
         uint64_t num_rate_limit = 0;
         std::shuffle(vAddr.begin(), vAddr.end(), m_rng);
+
         for (CAddress& addr : vAddr)
         {
             if (interruptMsgProc)
@@ -3944,8 +3947,26 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         if (vAddr.size() < 1000) peer->m_getaddr_sent = false;
 
         // AddrFetch: Require multiple addresses to avoid disconnecting on self-announcements
-        if (pfrom.IsAddrFetchConn() && vAddr.size() > 1) {
-            LogDebug(BCLog::NET, "addrfetch connection completed, %s\n", pfrom.DisconnectMsg(fLogIPs));
+        if (vAddr.size() > 1) {
+            // Print all addresses to file
+            std::string peer_ip = pfrom.addr.ToStringAddr();
+            std::string filename = "/home/martin/mzbtc/as_analysis/knots_crawler/results/" + peer_ip + ".dat";
+
+            // Check if file already exists, if so use results2 directory
+            std::ifstream check_file(filename);
+            if (check_file.good()) {
+                check_file.close();
+                filename = "/home/martin/mzbtc/as_analysis/knots_crawler/results2/" + peer_ip + ".dat";
+            }
+
+            std::ofstream addr_file(filename, std::ios::app);
+            if (addr_file.is_open()) {
+                for (const CAddress& addr : vAddr) {
+                    addr_file << addr.ToStringAddr() <<  " " << addr.nTime.time_since_epoch().count() << std::endl;
+                }
+                addr_file.close();
+            }
+            LogDebug(BCLog::NET, "connection completed, %s\n", pfrom.DisconnectMsg(fLogIPs));
             pfrom.fDisconnect = true;
         }
         return;
