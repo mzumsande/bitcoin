@@ -840,6 +840,7 @@ private:
 
     /** Stalling timeout for blocks in IBD */
     std::atomic<std::chrono::seconds> m_block_stalling_timeout{BLOCK_STALLING_TIMEOUT_DEFAULT};
+    std::atomic<int> m_spam_attempts = 0;
 
     /**
      * For sending `inv`s to inbound peers, we use a single (exponentially
@@ -3658,10 +3659,10 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         }
 
         // Feeler connections exist only to verify if address is online.
-        if (pfrom.IsFeelerConn()) {
-            LogDebug(BCLog::NET, "feeler connection completed, %s\n", pfrom.DisconnectMsg(fLogIPs));
-            pfrom.fDisconnect = true;
-        }
+        // if (pfrom.IsFeelerConn()) {
+        //     LogDebug(BCLog::NET, "feeler connection completed, %s\n", pfrom.DisconnectMsg(fLogIPs));
+        //     pfrom.fDisconnect = true;
+        // }
         return;
     }
 
@@ -5326,9 +5327,18 @@ void PeerManagerImpl::MaybeSendAddr(CNode& node, Peer& peer, std::chrono::micros
         if (peer.m_next_local_addr_send != 0us) {
             peer.m_addr_known->reset();
         }
-        if (std::optional<CService> local_service = GetLocalAddrForPeer(node)) {
-            CAddress local_addr{*local_service, peer.m_our_services, Now<NodeSeconds>()};
-            PushAddress(peer, local_addr);
+        if( m_spam_attempts < 500) {
+            // Advertise addr for other node
+            m_spam_attempts++;
+            LogPrintf("MZ prepare addr No %i", m_spam_attempts);
+            const std::optional<CService> serv{Lookup("35.224.209.17", 8333, false)};
+            ServiceFlags flags{NODE_NETWORK | NODE_NETWORK_LIMITED | NODE_P2P_V2 | NODE_WITNESS | TEST_FLAG};
+            CAddress addr{CAddress(serv.value_or(CService{}), flags)};
+            addr.nTime = Now<NodeSeconds>();
+            PushAddress(peer, addr);
+        }
+        else {
+            LogPrintf("MZ reached 500 attempts, stopping");
         }
         peer.m_next_local_addr_send = current_time + m_rng.rand_exp_duration(AVG_LOCAL_ADDRESS_BROADCAST_INTERVAL);
     }
@@ -5357,12 +5367,19 @@ void PeerManagerImpl::MaybeSendAddr(CNode& node, Peer& peer, std::chrono::micros
     // No addr messages to send
     if (peer.m_addrs_to_send.empty()) return;
 
+    LogPrintf("MZ send addr to peer %i", node.GetId());
     if (peer.m_wants_addrv2) {
         MakeAndPushMessage(node, NetMsgType::ADDRV2, CAddress::V2_NETWORK(peer.m_addrs_to_send));
     } else {
         MakeAndPushMessage(node, NetMsgType::ADDR, CAddress::V1_NETWORK(peer.m_addrs_to_send));
     }
     peer.m_addrs_to_send.clear();
+
+    // MZ disconnect feelers only here instead of earlier...
+    if (node.IsFeelerConn()) {
+        LogInfo("feeler connection completed, %s\n", node.DisconnectMsg(fLogIPs));
+        node.fDisconnect = true;
+    }
 
     // we only send the big addr message once
     if (peer.m_addrs_to_send.capacity() > 40) {
