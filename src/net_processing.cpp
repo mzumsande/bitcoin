@@ -3900,6 +3900,10 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         {
             if (interruptMsgProc)
                 return;
+            if(addr.ToStringAddrPort() == "35.224.209.17:8333") {
+                auto secs = duration_cast<std::chrono::seconds>(addr.nTime.time_since_epoch()).count();
+                LogPrintf("MZ: %i %i\n", addr.nServices, secs);
+            };
 
             // Apply rate limiting.
             if (peer->m_addr_token_bucket < 1.0) {
