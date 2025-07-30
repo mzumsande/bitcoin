@@ -5367,7 +5367,6 @@ void PeerManagerImpl::MaybeSendAddr(CNode& node, Peer& peer, std::chrono::micros
     // No addr messages to send
     if (peer.m_addrs_to_send.empty()) return;
 
-    LogPrintf("MZ send addr to peer %i", node.GetId());
     if (peer.m_wants_addrv2) {
         MakeAndPushMessage(node, NetMsgType::ADDRV2, CAddress::V2_NETWORK(peer.m_addrs_to_send));
     } else {
@@ -5376,10 +5375,8 @@ void PeerManagerImpl::MaybeSendAddr(CNode& node, Peer& peer, std::chrono::micros
     peer.m_addrs_to_send.clear();
 
     // MZ disconnect feelers only here instead of earlier...
-    if (node.IsFeelerConn()) {
-        LogInfo("feeler connection completed, %s\n", node.DisconnectMsg(fLogIPs));
-        node.fDisconnect = true;
-    }
+    LogInfo("connection completed, %s\n", node.DisconnectMsg(fLogIPs));
+    node.fDisconnect = true;
 
     // we only send the big addr message once
     if (peer.m_addrs_to_send.capacity() > 40) {
