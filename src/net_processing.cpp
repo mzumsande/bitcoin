@@ -818,6 +818,12 @@ private:
     /** Number of nodes with fSyncStarted. */
     int nSyncStarted GUARDED_BY(cs_main) = 0;
 
+    //MZ counters
+    uint64_t m_samples = 0;
+    uint64_t m_found_old = 0;
+    uint64_t m_found_new = 0;
+    uint64_t m_found_other = 0;
+
     /** Hash of the last block we received via INV */
     uint256 m_last_block_inv_triggering_headers_sync GUARDED_BY(g_msgproc_mutex){};
 
@@ -3896,13 +3902,22 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         uint64_t num_proc = 0;
         uint64_t num_rate_limit = 0;
         std::shuffle(vAddr.begin(), vAddr.end(), m_rng);
+        if (vAddr.size() > 1) {
+            m_samples++;
+            //LogPrintf("Processing %i addr from peer %i", vAddr.size(), pfrom.GetId());
+        }
+
         for (CAddress& addr : vAddr)
         {
             if (interruptMsgProc)
                 return;
             if(addr.ToStringAddrPort() == "35.224.209.17:8333") {
                 auto secs = duration_cast<std::chrono::seconds>(addr.nTime.time_since_epoch()).count();
-                LogPrintf("MZ: %i %i\n", addr.nServices, secs);
+                if (addr.nServices == 3081) m_found_old++;
+                else if (addr.nServices == 134220809) m_found_new++;
+                else m_found_other++;
+                LogPrintf("MZ found: %i %i peer %i", addr.nServices, secs, pfrom.LogIP(true));
+                LogPrintf("MZ tot: %i %i %i %i", m_found_old, m_found_new, m_found_other, m_samples);
             };
 
             // Apply rate limiting.
@@ -3948,8 +3963,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         if (vAddr.size() < 1000) peer->m_getaddr_sent = false;
 
         // AddrFetch: Require multiple addresses to avoid disconnecting on self-announcements
-        if (pfrom.IsAddrFetchConn() && vAddr.size() > 1) {
-            LogDebug(BCLog::NET, "addrfetch connection completed, %s\n", pfrom.DisconnectMsg(fLogIPs));
+        if (vAddr.size() > 1) {
+            LogDebug(BCLog::NET, "connection completed, %s\n", pfrom.DisconnectMsg(fLogIPs));
             pfrom.fDisconnect = true;
         }
         return;
