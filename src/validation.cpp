@@ -2885,6 +2885,7 @@ bool Chainstate::FlushStateToDisk(
                 if (empty_cache ? !CoinsTip().Flush() : !CoinsTip().Sync()) {
                     return FatalError(m_chainman.GetNotifications(), state, _("Failed to write to coin database."));
                 }
+                m_last_flushed_block = m_chain.Tip();
                 full_flush_completed = true;
                 TRACEPOINT(utxocache, flush,
                     int64_t{Ticks<std::chrono::microseconds>(NodeClock::now() - nNow)},
@@ -4657,6 +4658,7 @@ bool Chainstate::LoadChainTip()
         return false;
     }
     m_chain.SetTip(*pindex);
+    m_last_flushed_block = pindex;
     PruneBlockIndexCandidates();
 
     tip = m_chain.Tip();
