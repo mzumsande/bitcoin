@@ -256,6 +256,23 @@ bool BaseIndex::Commit()
     // Don't commit anything if we haven't indexed any block yet
     // (this could happen if init is interrupted).
     bool ok = m_best_block_index != nullptr;
+
+    if(ok) {
+        // Don't commit if the index is ahead of the chainstate's last flushed block
+        LOCK(::cs_main);
+        const CBlockIndex* last_flushed = m_chainstate->GetLastFlushedBlock();
+        const CBlockIndex* index_tip = m_best_block_index.load();
+
+        assert(last_flushed);//todo: change to assume
+        assert(index_tip);//todo: dito
+        if (last_flushed && index_tip) {
+            // Check if index tip is ahead of (not an ancestor of or equal to) the last flushed block
+            if (index_tip != last_flushed && last_flushed->GetAncestor(index_tip->nHeight) != index_tip) {
+                // Index is ahead of last flushed block, don't commit.
+                ok = false;
+            }
+        }
+    }
     if (ok) {
         CDBBatch batch(GetDB());
         ok = CustomCommit(batch);
