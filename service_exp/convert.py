@@ -1,10 +1,25 @@
 import json
 import random
 import re
+import sys
 
-# Load JSON from a file (change path if needed)
-with open('nodes_raw_0730.json', 'r') as f:
-    data = json.load(f)
+# Check if JSON file argument is provided
+if len(sys.argv) != 2:
+    print("Usage: python convert.py <json_file>")
+    sys.exit(1)
+
+json_file = sys.argv[1]
+
+# Load JSON from the specified file
+try:
+    with open(json_file, 'r') as f:
+        data = json.load(f)
+except FileNotFoundError:
+    print(f"Error: File '{json_file}' not found.")
+    sys.exit(1)
+except json.JSONDecodeError:
+    print(f"Error: '{json_file}' is not a valid JSON file.")
+    sys.exit(1)
 
 # Regex to match IPv4 addresses with ports (e.g. 123.123.123.123:8333)
 ipv4_with_port_regex = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}:\d+\b')
@@ -20,8 +35,9 @@ ipv4_with_port_list = [
 random.shuffle(ipv4_with_port_list)
 
 # Write to file
-with open('ipv4_list_0730.txt', 'w') as out_file:
+output_file = 'ipv4_list.txt'
+with open(output_file, 'w') as out_file:
     for entry in ipv4_with_port_list:
         out_file.write(entry + '\n')
 
-print(f"Extracted and saved {len(ipv4_with_port_list)} IPv4:port entries to ipv4_list.txt")
+print(f"Extracted and saved {len(ipv4_with_port_list)} IPv4:port entries to {output_file}")

@@ -1,13 +1,13 @@
 import time
 import json
 import requests
+import sys
 
 RPC_USER = "martin"      # <-- Set this
 RPC_PASSWORD = "test"  # <-- Set this
 RPC_PORT = 8332                # Default RPC port
 RPC_HOST = "127.0.0.1"
 
-IP_FILE = "ipv4_list_0730.txt"
 NODES_PER_MINUTE = 30
 
 
@@ -34,8 +34,19 @@ def connect_nodes(ip_list):
         time.sleep(60 / NODES_PER_MINUTE)
 
 def main():
-    with open(IP_FILE, 'r') as f:
-        ips = [line.strip() for line in f if line.strip()]
+    # Check if input file argument is provided
+    if len(sys.argv) != 2:
+        print("Usage: python connect.py <ip_file>")
+        sys.exit(1)
+
+    ip_file = sys.argv[1]
+
+    try:
+        with open(ip_file, 'r') as f:
+            ips = [line.strip() for line in f if line.strip()]
+    except FileNotFoundError:
+        print(f"Error: File '{ip_file}' not found.")
+        sys.exit(1)
 
     print(f"Connecting to {len(ips)} nodes...")
     connect_nodes(ips)
