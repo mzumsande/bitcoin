@@ -56,7 +56,7 @@ void initialize_process_message()
     static const auto testing_setup{
         MakeNoLogFileContext<TestingSetup>(
             /*chain_type=*/ChainType::REGTEST,
-            {}),
+            {.chainman_factory = MakeTestChainstateManager}),
     };
     g_setup = testing_setup.get();
     ResetChainman(*g_setup);

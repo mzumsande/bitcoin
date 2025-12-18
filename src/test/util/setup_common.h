@@ -25,10 +25,19 @@
 #include <util/vector.h>
 
 #include <functional>
+#include <memory>
 #include <type_traits>
 #include <vector>
 
 class arith_uint256;
+class ChainstateManager;
+namespace kernel {
+struct BlockManagerOpts;
+struct ChainstateManagerOpts;
+} // namespace kernel
+namespace util {
+class SignalInterrupt;
+} // namespace util
 class CFeeRate;
 class Chainstate;
 class FastRandomContext;
@@ -49,6 +58,14 @@ static constexpr CAmount CENT{1000000};
 /** Register common test args. Shared across binaries that rely on the test framework. */
 void SetupCommonTestArgs(ArgsManager& argsman);
 
+/** Factory function type for creating ChainstateManager instances.
+ * Tests can provide a custom factory to create derived types (e.g., TestChainstateManager).
+ */
+using ChainmanFactory = std::function<std::unique_ptr<ChainstateManager>(
+    const util::SignalInterrupt& interrupt,
+    kernel::ChainstateManagerOpts chainman_opts,
+    kernel::BlockManagerOpts blockman_opts)>;
+
 struct TestOpts {
     std::vector<const char*> extra_args{};
     bool coins_db_in_memory{true};
@@ -56,6 +73,9 @@ struct TestOpts {
     bool setup_net{true};
     bool setup_validation_interface{true};
     bool min_validation_cache{false}; // Equivalent of -maxsigcachebytes=0
+    //! Optional factory for creating a custom ChainstateManager (e.g., TestChainstateManager).
+    //! If not set, a standard ChainstateManager is created.
+    std::optional<ChainmanFactory> chainman_factory{};
 };
 
 /** Basic testing setup.

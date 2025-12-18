@@ -35,6 +35,11 @@ using namespace std::literals;
 using namespace util::hex_literals;
 using util::ToString;
 
+/** Testing setup that uses TestChainstateManager for tests needing IBD control. */
+struct NetTestingSetup : public TestingSetup {
+    NetTestingSetup() : TestingSetup{ChainType::REGTEST, {.chainman_factory = MakeTestChainstateManager}} {}
+};
+
 BOOST_FIXTURE_TEST_SUITE(net_tests, RegTestingSetup)
 
 BOOST_AUTO_TEST_CASE(cnode_listen_port)
@@ -799,7 +804,7 @@ BOOST_AUTO_TEST_CASE(LocalAddress_BasicLifecycle)
     BOOST_CHECK(!IsLocal(addr));
 }
 
-BOOST_AUTO_TEST_CASE(initial_advertise_from_version_message)
+BOOST_FIXTURE_TEST_CASE(initial_advertise_from_version_message, NetTestingSetup)
 {
     LOCK(NetEventsInterface::g_msgproc_mutex);
 

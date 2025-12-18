@@ -285,7 +285,11 @@ ChainTestingSetup::ChainTestingSetup(const ChainType chainType, TestOpts opts)
                 .wipe_data = m_args.GetBoolArg("-reindex", false),
             },
         };
-        m_node.chainman = std::make_unique<ChainstateManager>(*Assert(m_node.shutdown_signal), chainman_opts, blockman_opts);
+        if (opts.chainman_factory) {
+            m_node.chainman = (*opts.chainman_factory)(*Assert(m_node.shutdown_signal), std::move(chainman_opts), std::move(blockman_opts));
+        } else {
+            m_node.chainman = std::make_unique<ChainstateManager>(*Assert(m_node.shutdown_signal), chainman_opts, blockman_opts);
+        }
     };
     m_make_chainman();
 }

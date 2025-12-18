@@ -32,6 +32,12 @@ using node::BlockManager;
 using node::KernelNotifications;
 using node::SnapshotMetadata;
 
+/** TestChain100Setup using TestChainstateManager for tests needing IBD control. */
+struct TestChain100SetupWithTestChainman : public TestChain100Setup {
+    TestChain100SetupWithTestChainman()
+        : TestChain100Setup{ChainType::REGTEST, {.chainman_factory = MakeTestChainstateManager}} {}
+};
+
 BOOST_FIXTURE_TEST_SUITE(validation_chainstatemanager_tests, TestingSetup)
 
 //! Basic tests for ChainstateManager.
@@ -111,7 +117,7 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager, TestChain100Setup)
 }
 
 //! Test rebalancing the caches associated with each chainstate.
-BOOST_FIXTURE_TEST_CASE(chainstatemanager_rebalance_caches, TestChain100Setup)
+BOOST_FIXTURE_TEST_CASE(chainstatemanager_rebalance_caches, TestChain100SetupWithTestChainman)
 {
     ChainstateManager& manager = *m_node.chainman;
 

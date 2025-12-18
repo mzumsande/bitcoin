@@ -5,11 +5,18 @@
 #ifndef BITCOIN_TEST_UTIL_VALIDATION_H
 #define BITCOIN_TEST_UTIL_VALIDATION_H
 
+#include <kernel/blockmanager_opts.h>
+#include <kernel/chainstatemanager_opts.h>
 #include <validation.h>
+
+#include <memory>
 
 namespace node {
 class BlockManager;
-}
+} // namespace node
+namespace util {
+class SignalInterrupt;
+} // namespace util
 class CValidationInterface;
 
 struct TestBlockManager : public node::BlockManager {
@@ -18,6 +25,9 @@ struct TestBlockManager : public node::BlockManager {
 };
 
 struct TestChainstateManager : public ChainstateManager {
+    /** Inherit ChainstateManager's constructor */
+    using ChainstateManager::ChainstateManager;
+
     /** Disable the next write of all chainstates */
     void DisableNextWrite();
     /** Reset the ibd cache to its initial state */
@@ -30,6 +40,18 @@ struct TestChainstateManager : public ChainstateManager {
     CBlockIndex* FindMostWorkChain() EXCLUSIVE_LOCKS_REQUIRED(cs_main);
     void ResetBestInvalid() EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 };
+
+/** Factory function for creating TestChainstateManager.
+ * Use this with TestOpts::chainman_factory to properly instantiate
+ * TestChainstateManager instead of using UB static_cast.
+ */
+inline std::unique_ptr<ChainstateManager> MakeTestChainstateManager(
+    const util::SignalInterrupt& interrupt,
+    kernel::ChainstateManagerOpts chainman_opts,
+    kernel::BlockManagerOpts blockman_opts)
+{
+    return std::make_unique<TestChainstateManager>(interrupt, std::move(chainman_opts), std::move(blockman_opts));
+}
 
 class ValidationInterfaceTest
 {

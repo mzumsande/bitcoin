@@ -34,7 +34,9 @@ CBlockHeader ConsumeBlockHeader(FuzzedDataProvider& provider, uint256 prev_hash,
 
 void initialize_block_index_tree()
 {
-    static const auto testing_setup = MakeNoLogFileContext<const TestingSetup>();
+    static const auto testing_setup = MakeNoLogFileContext<const TestingSetup>(
+        /*chain_type=*/ChainType::REGTEST,
+        {.chainman_factory = MakeTestChainstateManager});
     g_setup = testing_setup.get();
 }
 

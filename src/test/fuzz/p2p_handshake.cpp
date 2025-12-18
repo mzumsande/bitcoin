@@ -32,7 +32,8 @@ const TestingSetup* g_setup;
 void initialize()
 {
     static const auto testing_setup = MakeNoLogFileContext<const TestingSetup>(
-        /*chain_type=*/ChainType::REGTEST);
+        /*chain_type=*/ChainType::REGTEST,
+        {.chainman_factory = MakeTestChainstateManager});
     g_setup = testing_setup.get();
 }
 } // namespace
