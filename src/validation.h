@@ -1079,7 +1079,7 @@ public:
     //!
     //! @param[in] mempool              The mempool to pass to the chainstate
     //                                  constructor
-    Chainstate& InitializeChainstate(CTxMemPool* mempool) EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
+    virtual Chainstate& InitializeChainstate(CTxMemPool* mempool) EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
 
     //! Construct and activate a Chainstate on the basis of UTXO snapshot data.
     //!
@@ -1338,7 +1338,7 @@ public:
 
     CCheckQueue<CScriptCheck>& GetCheckQueue() { return m_script_check_queue; }
 
-    ~ChainstateManager();
+    virtual ~ChainstateManager();
 
     //! List of chainstates. Note: in general, it is not safe to delete
     //! Chainstate objects once they are added to this list because there is no

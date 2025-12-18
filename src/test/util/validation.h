@@ -9,8 +9,11 @@
 #include <kernel/chainstatemanager_opts.h>
 #include <validation.h>
 
+#include <functional>
 #include <memory>
+#include <optional>
 
+class CTxMemPool;
 namespace node {
 class BlockManager;
 } // namespace node
@@ -24,9 +27,22 @@ struct TestBlockManager : public node::BlockManager {
     void CleanupForFuzzing();
 };
 
+/** Factory function type for creating custom Chainstate instances in tests. */
+using ChainstateFactory = std::function<std::unique_ptr<Chainstate>(
+    CTxMemPool* mempool,
+    node::BlockManager& blockman,
+    ChainstateManager& chainman,
+    std::optional<uint256> from_snapshot_blockhash)>;
+
 struct TestChainstateManager : public ChainstateManager {
     /** Inherit ChainstateManager's constructor */
     using ChainstateManager::ChainstateManager;
+
+    /** Optional factory for creating custom Chainstate types (e.g., TestChainstate). */
+    std::optional<ChainstateFactory> m_chainstate_factory{};
+
+    /** Override to use m_chainstate_factory if set. */
+    Chainstate& InitializeChainstate(CTxMemPool* mempool) override EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
 
     /** Disable the next write of all chainstates */
     void DisableNextWrite();

@@ -91,3 +91,15 @@ void TestChainstateManager::ResetBestInvalid()
 {
     m_best_invalid = nullptr;
 }
+
+Chainstate& TestChainstateManager::InitializeChainstate(CTxMemPool* mempool)
+{
+    AssertLockHeld(::cs_main);
+    assert(m_chainstates.empty());
+    if (m_chainstate_factory) {
+        m_chainstates.emplace_back((*m_chainstate_factory)(mempool, m_blockman, *this, std::nullopt));
+    } else {
+        m_chainstates.emplace_back(std::make_unique<Chainstate>(mempool, m_blockman, *this));
+    }
+    return *m_chainstates.back();
+}
