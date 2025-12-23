@@ -6,6 +6,7 @@
 #include <chain.h>
 #include <chainparams.h>
 #include <flatfile.h>
+#include <kernel/disconnected_transactions.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
 #include <test/fuzz/FuzzedDataProvider.h>
@@ -18,7 +19,97 @@
 #include <ranges>
 #include <vector>
 
-const TestingSetup* g_setup;
+namespace {
+
+/** Test chainstate that mocks ConnectTip/DisconnectTip for fuzz testing. */
+struct TestChainstate : public Chainstate {
+    using Chainstate::Chainstate;
+
+    FuzzedDataProvider* m_fuzzed_data_provider{nullptr};
+
+    //! Expose protected method for test use
+    void CallInvalidBlockFound(CBlockIndex* pindex, const BlockValidationState& state) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
+    {
+        InvalidBlockFound(pindex, state);
+    }
+
+    bool ConnectTip(
+        BlockValidationState& state,
+        CBlockIndex* pindexNew,
+        std::shared_ptr<const CBlock> block_to_connect,
+        ConnectTrace& connectTrace,
+        DisconnectedBlockTransactions& disconnectpool) override EXCLUSIVE_LOCKS_REQUIRED(cs_main, m_mempool->cs)
+    {
+        // Mock validation: randomly decide if block is invalid
+        if (!pindexNew->IsValid(BLOCK_VALID_SCRIPTS)) {
+            if (m_fuzzed_data_provider && m_fuzzed_data_provider->ConsumeBool()) {
+                // Block is invalid
+                state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "fuzz-invalid");
+                InvalidBlockFound(pindexNew, state);
+                return false;
+            }
+            // Block is valid - mark it as such
+            pindexNew->RaiseValidity(BLOCK_VALID_SCRIPTS);
+            pindexNew->nStatus |= BLOCK_HAVE_UNDO;
+        }
+
+        // Update chain tip
+        m_chain.SetTip(*pindexNew);
+        PruneBlockIndexCandidates();
+
+        return true;
+    }
+
+    bool DisconnectTip(BlockValidationState& state, DisconnectedBlockTransactions* disconnectpool) override EXCLUSIVE_LOCKS_REQUIRED(cs_main, m_mempool->cs)
+    {
+        CBlockIndex* pindexDelete = m_chain.Tip();
+        assert(pindexDelete);
+        assert(pindexDelete->pprev);
+
+        // Check if we have undo data (simulating pruning check)
+        if (!(pindexDelete->nStatus & BLOCK_HAVE_UNDO)) {
+            // Can't disconnect - undo data was pruned
+            state.Invalid(BlockValidationResult::BLOCK_MISSING_PREV, "fuzz-missing-undo");
+            return false;
+        }
+
+        // Simply update chain tip without UTXO operations
+        m_chain.SetTip(*pindexDelete->pprev);
+
+        return true;
+    }
+};
+
+/** Factory function for creating TestChainstate. */
+std::unique_ptr<Chainstate> MakeTestChainstate(
+    CTxMemPool* mempool,
+    node::BlockManager& blockman,
+    ChainstateManager& chainman,
+    std::optional<uint256> from_snapshot_blockhash)
+{
+    return std::make_unique<TestChainstate>(mempool, blockman, chainman, from_snapshot_blockhash);
+}
+
+/** Custom setup that uses TestChainstate with mocked ConnectTip. */
+struct BlockIndexTreeSetup : public ChainTestingSetup {
+    explicit BlockIndexTreeSetup(const ChainType chain_type = ChainType::REGTEST, TestOpts opts = {})
+        : ChainTestingSetup{chain_type, [&opts] {
+              opts.setup_net = false;
+              opts.chainman_factory = MakeTestChainstateManager;
+              return opts;
+          }()}
+    {
+        // Set the chainstate factory before loading
+        auto& test_chainman = static_cast<TestChainstateManager&>(*m_node.chainman);
+        test_chainman.m_chainstate_factory = MakeTestChainstate;
+
+        // Now load the chainstate (which will use our factory)
+        LoadVerifyActivateChainstate();
+    }
+};
+
+const BlockIndexTreeSetup* g_setup;
+} // namespace
 
 CBlockHeader ConsumeBlockHeader(FuzzedDataProvider& provider, uint256 prev_hash, int& nonce_counter)
 {
@@ -34,14 +125,13 @@ CBlockHeader ConsumeBlockHeader(FuzzedDataProvider& provider, uint256 prev_hash,
 
 void initialize_block_index_tree()
 {
-    static const auto testing_setup = MakeNoLogFileContext<const TestingSetup>(
-        /*chain_type=*/ChainType::REGTEST,
-        {.chainman_factory = MakeTestChainstateManager});
+    static const auto testing_setup = MakeNoLogFileContext<BlockIndexTreeSetup>();
     g_setup = testing_setup.get();
 }
 
 FUZZ_TARGET(block_index_tree, .init = initialize_block_index_tree)
 {
+    SeedRandomStateForTest(SeedRand::ZEROS);
     FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
     SetMockTime(ConsumeTime(fuzzed_data_provider));
     auto& chainman = static_cast<TestChainstateManager&>(*g_setup->m_node.chainman);
@@ -80,7 +170,7 @@ FUZZ_TARGET(block_index_tree, .init = initialize_block_index_tree)
                     if (fuzzed_data_provider.ConsumeBool()) { // Invalid
                         BlockValidationState state;
                         state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "consensus-invalid");
-                        chainman.InvalidBlockFound(index, state);
+                        static_cast<TestChainstate&>(chainman.ActiveChainstate()).CallInvalidBlockFound(index, state);
                     } else {
                         size_t nTx = fuzzed_data_provider.ConsumeIntegralInRange<size_t>(1, 1000);
                         CBlock block; // Dummy block, so that ReceivedBlockTransactions can infer a nTx value.
@@ -93,63 +183,20 @@ FUZZ_TARGET(block_index_tree, .init = initialize_block_index_tree)
                 }
             },
             [&] {
-                // Simplified ActivateBestChain(): Try to move to a chain with more work - with the possibility of finding blocks to be invalid on the way
-                LOCK(cs_main);
-                auto& chain = chainman.ActiveChain();
-                CBlockIndex* old_tip = chain.Tip();
-                assert(old_tip);
-                do {
-                    CBlockIndex* best_tip = chainman.FindMostWorkChain();
-                    assert(best_tip);                   // Should at least return current tip
-                    if (best_tip == chain.Tip()) break; // Nothing to do
-                    // Rewind chain to forking point
-                    const CBlockIndex* fork = chain.FindFork(best_tip);
-                    // If we can't go back to the fork point due to pruned data, abort this run. In reality, a pruned node would also currently just crash in this scenario.
-                    // This is very unlikely to happen due to the minimum pruning threshold of 550MiB.
-                    CBlockIndex* it = chain.Tip();
-                    while (it && it->nHeight != fork->nHeight) {
-                        if (!(it->nStatus & BLOCK_HAVE_UNDO)) {
-                            assert(blockman.m_have_pruned);
-                            abort_run = true;
-                            return;
-                        }
-                        it = it->pprev;
-                    }
-                    chain.SetTip(*chain[fork->nHeight]);
+                // Call real ActivateBestChain with mocked ConnectTip/DisconnectTip
+                auto& test_chainstate = static_cast<TestChainstate&>(chainman.ActiveChainstate());
+                test_chainstate.m_fuzzed_data_provider = &fuzzed_data_provider;
 
-                    // Prepare new blocks to connect
-                    std::vector<CBlockIndex*> to_connect;
-                    it = best_tip;
-                    while (it && it->nHeight != fork->nHeight) {
-                        to_connect.push_back(it);
-                        it = it->pprev;
+                BlockValidationState state;
+                if (!test_chainstate.ActivateBestChain(state)) {
+                    // Activation failed (e.g., due to pruned undo data during reorg)
+                    // This mirrors the abort_run behavior of the old manual implementation
+                    if (state.GetResult() == BlockValidationResult::BLOCK_MISSING_PREV) {
+                        abort_run = true;
                     }
-                    // Connect blocks, possibly fail
-                    for (CBlockIndex* block : to_connect | std::views::reverse) {
-                        assert(!(block->nStatus & BLOCK_FAILED_MASK));
-                        assert(block->nStatus & BLOCK_HAVE_DATA);
-                        if (!block->IsValid(BLOCK_VALID_SCRIPTS)) {
-                            if (fuzzed_data_provider.ConsumeBool()) { // Invalid
-                                BlockValidationState state;
-                                state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "consensus-invalid");
-                                chainman.InvalidBlockFound(block, state);
-                                // This results in duplicate calls to InvalidChainFound, but mirrors the behavior in validation
-                                chainman.InvalidChainFound(to_connect.front());
-                                break;
-                            } else {
-                                block->RaiseValidity(BLOCK_VALID_SCRIPTS);
-                                block->nStatus |= BLOCK_HAVE_UNDO;
-                            }
-                        }
-                        chain.SetTip(*block);
-                        chainman.ActiveChainstate().PruneBlockIndexCandidates();
-                        // ActivateBestChainStep may release cs_main / not connect all blocks in one go - but only if we have at least as much chain work as we had at the start.
-                        if (block->nChainWork > old_tip->nChainWork && fuzzed_data_provider.ConsumeBool()) {
-                            break;
-                        }
-                    }
-                } while (node::CBlockIndexWorkComparator()(chain.Tip(), old_tip));
-                assert(chain.Tip()->nChainWork >= old_tip->nChainWork);
+                }
+
+                test_chainstate.m_fuzzed_data_provider = nullptr;
             },
             [&] {
                 // Prune chain - dealing with block files is beyond the scope of this test, so just prune random blocks, making no assumptions

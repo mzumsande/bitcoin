@@ -51,41 +51,6 @@ void ValidationInterfaceTest::BlockConnected(
 {
     obj.BlockConnected(role, block, pindex);
 }
-void TestChainstateManager::InvalidBlockFound(CBlockIndex* pindex, const BlockValidationState& state)
-{
-    struct TestChainstate : public Chainstate {
-        void CallInvalidBlockFound(CBlockIndex* pindex, const BlockValidationState& state) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
-        {
-            InvalidBlockFound(pindex, state);
-        }
-    };
-
-    static_cast<TestChainstate*>(&ActiveChainstate())->CallInvalidBlockFound(pindex, state);
-}
-
-void TestChainstateManager::InvalidChainFound(CBlockIndex* pindexNew)
-{
-    struct TestChainstate : public Chainstate {
-        void CallInvalidChainFound(CBlockIndex* pindexNew) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
-        {
-            InvalidChainFound(pindexNew);
-        }
-    };
-
-    static_cast<TestChainstate*>(&ActiveChainstate())->CallInvalidChainFound(pindexNew);
-}
-
-CBlockIndex* TestChainstateManager::FindMostWorkChain()
-{
-    struct TestChainstate : public Chainstate {
-        CBlockIndex* CallFindMostWorkChain() EXCLUSIVE_LOCKS_REQUIRED(cs_main)
-        {
-            return FindMostWorkChain();
-        }
-    };
-
-    return static_cast<TestChainstate*>(&ActiveChainstate())->CallFindMostWorkChain();
-}
 
 void TestChainstateManager::ResetBestInvalid()
 {
