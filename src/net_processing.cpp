@@ -276,6 +276,8 @@ struct Peer {
     std::atomic<NodeClock::time_point> m_ping_start{NodeClock::epoch};
     /** Whether a ping has been requested by the user */
     std::atomic<bool> m_ping_queued{false};
+    /** When the ping answered by the most recent matching pong was sent, or 0 if none */
+    std::atomic<NodeClock::time_point> m_last_pong_ping_start{NodeClock::epoch};
 
     /** Whether this peer relays txs via wtxid */
     std::atomic<bool> m_wtxid_relay{false};
@@ -1850,6 +1852,7 @@ bool PeerManagerImpl::GetNodeStateStats(NodeId nodeid, CNodeStateStats& stats) c
     }
 
     stats.m_ping_wait = ping_wait;
+    stats.m_last_pong_ping_start = peer->m_last_pong_ping_start.load();
     stats.m_addr_processed = peer->m_addr_processed.load();
     stats.m_addr_rate_limited = peer->m_addr_rate_limited.load();
     stats.m_addr_relay_enabled = peer->m_addr_relay_enabled.load();
@@ -5647,6 +5650,7 @@ void PeerManagerImpl::ProcessPong(CNode& pfrom, Peer& peer, const NodeClock::tim
             if (nonce == peer.m_ping_nonce_sent) {
                 // Matching pong received, this ping is no longer outstanding
                 bPingFinished = true;
+                peer.m_last_pong_ping_start = peer.m_ping_start.load();
                 const auto ping_time = ping_end - peer.m_ping_start.load();
                 if (ping_time.count() >= 0) {
                     // Let connman know about this successful ping-pong
