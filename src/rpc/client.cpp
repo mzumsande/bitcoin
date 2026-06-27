@@ -375,6 +375,8 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "stop", 0, "wait" },
     { "addnode", 2, "v2transport" },
     { "addconnection", 2, "v2transport" },
+    { "sendaddrtorandompeer", 1, "max_tries" },
+    { "sendaddrtorandompeer", 2, "wait" },
     { "decodepsbt", 0, "psbt", ParamFormat::STRING },
     { "analyzepsbt", 0, "psbt", ParamFormat::STRING},
     { "verifymessage", 1, "signature", ParamFormat::STRING },

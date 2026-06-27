@@ -55,6 +55,8 @@ struct CNodeStateStats {
     int nSyncHeight = -1;
     int nCommonHeight = -1;
     NodeClock::duration m_ping_wait;
+    /** When the ping answered by the most recent matching pong was sent, or epoch if none. */
+    NodeClock::time_point m_last_pong_ping_start{NodeClock::epoch};
     std::vector<int> vHeightInFlight;
     bool m_relay_txs;
     int m_inv_to_send = 0;
