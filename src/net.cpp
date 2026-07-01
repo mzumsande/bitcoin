@@ -261,7 +261,7 @@ std::optional<CService> GetLocalAddrForPeer(CNode& node)
         }
     }
     if (addrLocal.IsRoutable()) {
-        LogDebug(BCLog::NET, "Advertising address %s to peer=%d\n", addrLocal.ToStringAddrPort(), node.GetId());
+        LogInfo("### Advertising address %s to peer=%d\n", addrLocal.ToStringAddrPort(), node.GetId());
         return addrLocal;
     }
     // Address is unroutable. Don't advertise.

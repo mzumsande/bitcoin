@@ -6000,16 +6000,21 @@ void PeerManagerImpl::ProcessAddrs(std::string_view msg_type, CNode& pfrom, Peer
     const bool rate_limited = !pfrom.HasPermission(NetPermissionFlags::Addr);
     uint64_t num_proc = 0;
     uint64_t num_rate_limit = 0;
+    const std::string addr_src{vAddr.size() > 900 ? "getaddr" : "gossip"};
     std::shuffle(vAddr.begin(), vAddr.end(), m_rng);
     for (CAddress& addr : vAddr)
     {
         if (interruptMsgProc)
             return;
 
+        const auto raw_ntime{addr.nTime};
+
         // Apply rate limiting.
         if (peer.m_addr_token_bucket < 1.0) {
             if (rate_limited) {
                 ++num_rate_limit;
+                LogInfo("### addr %s from peer=%d (%s): dropped (rate-limited)\n",
+                        addr.ToStringAddrPort(), pfrom.GetId(), addr_src);
                 continue;
             }
         } else {
@@ -6018,8 +6023,11 @@ void PeerManagerImpl::ProcessAddrs(std::string_view msg_type, CNode& pfrom, Peer
         // We only bother storing full nodes, though this may include
         // things which we would not make an outbound connection to, in
         // part because we may make feeler connections to them.
-        if (!MayHaveUsefulAddressDB(addr.nServices) && !HasAllDesirableServiceFlags(addr.nServices))
+        if (!MayHaveUsefulAddressDB(addr.nServices) && !HasAllDesirableServiceFlags(addr.nServices)) {
+            LogInfo("### addr %s from peer=%d (%s): dropped (services=%016x not useful)\n",
+                    addr.ToStringAddrPort(), pfrom.GetId(), addr_src, addr.nServices);
             continue;
+        }
 
         if (addr.nTime <= NodeSeconds{100000000s} || addr.nTime > current_time + 10min) {
             addr.nTime = std::chrono::time_point_cast<std::chrono::seconds>(current_time - 5 * 24h);
@@ -6027,6 +6035,8 @@ void PeerManagerImpl::ProcessAddrs(std::string_view msg_type, CNode& pfrom, Peer
         AddAddressKnown(peer, addr);
         if (m_banman && (m_banman->IsDiscouraged(addr) || m_banman->IsBanned(addr))) {
             // Do not process banned/discouraged addresses beyond remembering we received them
+            LogInfo("### addr %s from peer=%d (%s): dropped (banned/discouraged)\n",
+                    addr.ToStringAddrPort(), pfrom.GetId(), addr_src);
             continue;
         }
         ++num_proc;
@@ -6037,13 +6047,19 @@ void PeerManagerImpl::ProcessAddrs(std::string_view msg_type, CNode& pfrom, Peer
         }
         // Do not store addresses outside our network
         if (reachable) {
+            LogInfo("### addr %s nTime=%d services=%016x from peer=%d (%s): passed to addrman\n",
+                    addr.ToStringAddrPort(), TicksSinceEpoch<std::chrono::seconds>(raw_ntime),
+                    addr.nServices, pfrom.GetId(), addr_src);
             vAddrOk.push_back(addr);
+        } else {
+            LogInfo("### addr %s from peer=%d (%s): dropped (unreachable net)\n",
+                    addr.ToStringAddrPort(), pfrom.GetId(), addr_src);
         }
     }
     peer.m_addr_processed += num_proc;
     peer.m_addr_rate_limited += num_rate_limit;
-    LogDebug(BCLog::NET, "Received addr: %u addresses (%u processed, %u rate-limited) from peer=%d\n",
-             vAddr.size(), num_proc, num_rate_limit, pfrom.GetId());
+    LogInfo("### Received addr (%s): %u addresses (%u processed, %u rate-limited) from peer=%d\n",
+             addr_src, vAddr.size(), num_proc, num_rate_limit, pfrom.GetId());
 
     m_addrman.Add(vAddrOk, pfrom.addr, /*time_penalty=*/2h);
     if (vAddr.size() < 1000) peer.m_getaddr_sent = false;

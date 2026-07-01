@@ -532,8 +532,10 @@ bool AddrManImpl::AddSingle(const CAddress& addr, const CNetAddr& source, std::c
 {
     AssertLockHeld(cs);
 
-    if (!addr.IsRoutable())
+    if (!addr.IsRoutable()) {
+        LogInfo("### addrman %s: not added (not routable)\n", addr.ToStringAddrPort());
         return false;
+    }
 
     nid_type nId;
     AddrInfo* pinfo = Find(addr, &nId);
@@ -556,21 +558,30 @@ bool AddrManImpl::AddSingle(const CAddress& addr, const CNetAddr& source, std::c
 
         // do not update if no new information is present
         if (addr.nTime <= pinfo->nTime) {
+            LogInfo("### addrman %s: not added (already known, no newer nTime)\n", addr.ToStringAddrPort());
             return false;
         }
 
         // do not update if the entry was already in the "tried" table
-        if (pinfo->fInTried)
+        if (pinfo->fInTried) {
+            LogInfo("### addrman %s: not added (already in tried table)\n", addr.ToStringAddrPort());
             return false;
+        }
 
         // do not update if the max reference count is reached
-        if (pinfo->nRefCount == ADDRMAN_NEW_BUCKETS_PER_ADDRESS)
+        if (pinfo->nRefCount == ADDRMAN_NEW_BUCKETS_PER_ADDRESS) {
+            LogInfo("### addrman %s: not added (max new-table references reached)\n", addr.ToStringAddrPort());
             return false;
+        }
 
         // stochastic test: previous nRefCount == N: 2^N times harder to increase it
         if (pinfo->nRefCount > 0) {
             const int nFactor{1 << pinfo->nRefCount};
-            if (insecure_rand.randrange(nFactor) != 0) return false;
+            if (insecure_rand.randrange(nFactor) != 0) {
+                LogInfo("### addrman %s: not added (stochastic new-bucket test, nRefCount=%d)\n",
+                        addr.ToStringAddrPort(), pinfo->nRefCount);
+                return false;
+            }
         }
     } else {
         pinfo = Create(addr, source, &nId);
@@ -596,10 +607,16 @@ bool AddrManImpl::AddSingle(const CAddress& addr, const CNetAddr& source, std::c
             LogDebug(BCLog::ADDRMAN, "Added %s%s to new[%i][%i]\n",
                      addr.ToStringAddrPort(), (mapped_as ? strprintf(" mapped to AS%i", mapped_as) : ""), nUBucket, nUBucketPos);
         } else {
+            const AddrInfo& infoExisting = mapInfo[vvNew[nUBucket][nUBucketPos]];
+            LogInfo("### addrman %s: not added (new[%i][%i] occupied by %s, not evicted)\n",
+                    addr.ToStringAddrPort(), nUBucket, nUBucketPos, infoExisting.ToStringAddrPort());
             if (pinfo->nRefCount == 0) {
                 Delete(nId);
             }
         }
+    } else {
+        LogInfo("### addrman %s: not added (already present in new[%i][%i])\n",
+                addr.ToStringAddrPort(), nUBucket, nUBucketPos);
     }
     return fInsert;
 }
@@ -663,7 +680,10 @@ bool AddrManImpl::Add_(const std::vector<CAddress>& vAddr, const CNetAddr& sourc
 {
     int added{0};
     for (std::vector<CAddress>::const_iterator it = vAddr.begin(); it != vAddr.end(); it++) {
-        added += AddSingle(*it, source, time_penalty) ? 1 : 0;
+        const bool result{AddSingle(*it, source, time_penalty)};
+        added += result ? 1 : 0;
+        LogInfo("### addrman %s from %s: %s\n",
+                it->ToStringAddrPort(), source.ToStringAddr(), result ? "added" : "dropped");
     }
     if (added > 0) {
         LogDebug(BCLog::ADDRMAN, "Added %i addresses (of %i) from %s: %i tried, %i new\n", added, vAddr.size(), source.ToStringAddr(), nTried, nNew);
