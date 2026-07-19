@@ -4065,6 +4065,7 @@ void PeerManagerImpl::ProcessMessage(Peer& peer, CNode& pfrom, const std::string
 
         // Feeler connections exist only to verify if address is online.
         if (pfrom.IsFeelerConn()) {
+            LogInfo("### feeler connection to %s successful (handshake completed, address online)\n", pfrom.addr.ToStringAddrPort());
             LogDebug(BCLog::NET, "feeler connection completed, %s", pfrom.DisconnectMsg());
             pfrom.fDisconnect = true;
         }

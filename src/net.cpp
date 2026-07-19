@@ -556,6 +556,10 @@ CNode* CConnman::ConnectNode(CAddress addrConnect,
         return pnode;
     }
 
+    if (conn_type == ConnectionType::FEELER) {
+        LogInfo("### feeler connection to %s failed (could not connect, address likely offline)\n",
+                pszDest ? pszDest : addrConnect.ToStringAddrPort());
+    }
     return nullptr;
 }
 
