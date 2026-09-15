@@ -31,7 +31,7 @@ inline constexpr int32_t ADDRMAN_NEW_BUCKETS_PER_ADDRESS{8};
 /** How old addresses can maximally be */
 inline constexpr auto ADDRMAN_HORIZON{30 * 24h};
 /** After how many failed attempts we give up on a new node */
-inline constexpr int32_t ADDRMAN_RETRIES{3};
+inline constexpr int32_t ADDRMAN_RETRIES{1};
 /** How many successive failures are allowed ... */
 inline constexpr int32_t ADDRMAN_MAX_FAILURES{10};
 /** ... in at least this duration */
