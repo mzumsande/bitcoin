@@ -59,6 +59,10 @@ struct bilingual_str;
 inline constexpr std::chrono::minutes TIMEOUT_INTERVAL{20};
 /** Run the feeler connection loop once every 2 minutes. **/
 inline constexpr auto FEELER_INTERVAL = 2min;
+/** Run an additional feeler connection loop once every 30 seconds. These feelers are restricted to
+ *  new table addresses on networks we connect to directly (not through a proxy), because
+ *  feeler connections to those are cheap, both for us and for the network. **/
+inline constexpr auto DIRECT_FEELER_INTERVAL = 30s;
 /** Run the extra block-relay-only connection loop once every 5 minutes. **/
 inline constexpr auto EXTRA_BLOCK_RELAY_ONLY_PEER_INTERVAL = 5min;
 /** Maximum length of incoming protocol messages (no message over 4 MB is currently acceptable). */

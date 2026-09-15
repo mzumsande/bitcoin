@@ -54,6 +54,8 @@ enum class ConnectionType {
      * We make these connections approximately every FEELER_INTERVAL:
      * first we resolve previously found collisions if they exist (test-before-evict),
      * otherwise we connect to a node from the new table.
+     * In addition, approximately every DIRECT_FEELER_INTERVAL, we connect to a node
+     * from the new table on a network that we connect to directly (not through a proxy).
      */
     FEELER,
 

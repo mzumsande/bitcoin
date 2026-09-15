@@ -2635,6 +2635,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect, std
 
     // Minimum time before next feeler connection (in microseconds).
     auto next_feeler = start + rng.rand_exp_duration(FEELER_INTERVAL);
+    auto next_direct_feeler = start + rng.rand_exp_duration(DIRECT_FEELER_INTERVAL);
     auto next_extra_block_relay = start + rng.rand_exp_duration(EXTRA_BLOCK_RELAY_ONLY_PEER_INTERVAL);
     auto next_extra_network_peer{start + rng.rand_exp_duration(EXTRA_NETWORK_PEER_INTERVAL)};
     const bool dnsseed = gArgs.GetBoolArg("-dnsseed", DEFAULT_DNSSEED);
@@ -2776,7 +2777,11 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect, std
         auto now = GetTime<std::chrono::microseconds>();
         bool anchor = false;
         bool fFeeler = false;
+        // If set, this feeler is restricted to new table addresses from direct_feeler_nets.
+        bool direct_feeler = false;
+        std::unordered_set<Network> direct_feeler_nets;
         std::optional<Network> preferred_net;
+        const auto reachable_nets{g_reachable_nets.All()};
 
         // Determine what type of connection to open. Opening
         // BLOCK_RELAY connections to addresses from anchors.dat gets the highest
@@ -2787,7 +2792,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect, std
         // try opening an additional OUTBOUND_FULL_RELAY connection. If none of
         // these conditions are met, check to see if it's time to try an extra
         // block-relay-only peer (to confirm our tip is current, see below) or the next_feeler
-        // timer to decide if we should open a FEELER.
+        // or next_direct_feeler timers to decide if we should open a FEELER.
 
         if (!m_anchors.empty() && (nOutboundBlockRelay < m_max_outbound_block_relay)) {
             conn_type = ConnectionType::BLOCK_RELAY;
@@ -2826,6 +2831,18 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect, std
             next_feeler = now + rng.rand_exp_duration(FEELER_INTERVAL);
             conn_type = ConnectionType::FEELER;
             fFeeler = true;
+        } else if (now > next_direct_feeler) {
+            // Additional feelers, restricted to networks we connect to directly (not through a
+            // proxy), so that the rate of expensive feeler connections (e.g. Tor, I2P) is not
+            // affected by them.
+            next_direct_feeler = now + rng.rand_exp_duration(DIRECT_FEELER_INTERVAL);
+            for (const Network net : {NET_IPV4, NET_IPV6, NET_CJDNS}) {
+                if (reachable_nets.contains(net) && !GetProxy(net)) direct_feeler_nets.insert(net);
+            }
+            if (direct_feeler_nets.empty()) continue;
+            conn_type = ConnectionType::FEELER;
+            fFeeler = true;
+            direct_feeler = true;
         } else if (nOutboundFullRelay == m_max_outbound_full_relay &&
                    m_max_outbound_full_relay == MAX_OUTBOUND_FULL_RELAY_CONNECTIONS &&
                    now > next_extra_network_peer &&
@@ -2846,7 +2863,6 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect, std
 
         const auto current_time{NodeClock::now()};
         int nTries = 0;
-        const auto reachable_nets{g_reachable_nets.All()};
 
         while (!m_interrupt_net->interrupted()) {
             if (anchor && !m_anchors.empty()) {
@@ -2871,14 +2887,18 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect, std
             NodeSeconds addr_last_try{0s};
 
             if (fFeeler) {
+                const auto& feeler_nets{direct_feeler ? direct_feeler_nets : reachable_nets};
                 // First, try to get a tried table collision address. This returns
                 // an empty (invalid) address if there are no collisions to try.
-                std::tie(addr, addr_last_try) = addrman.get().SelectTriedCollision();
+                // Collision addresses can be from any network, so this is left to the regular feeler.
+                if (!direct_feeler) {
+                    std::tie(addr, addr_last_try) = addrman.get().SelectTriedCollision();
+                }
 
                 if (!addr.IsValid()) {
                     // No tried table collisions. Select a new table address
                     // for our feeler.
-                    std::tie(addr, addr_last_try) = addrman.get().Select(true, reachable_nets);
+                    std::tie(addr, addr_last_try) = addrman.get().Select(true, feeler_nets);
                 } else if (AlreadyConnectedToAddress(addr)) {
                     // If test-before-evict logic would have us connect to a
                     // peer that we're already connected to, just mark that
@@ -2887,7 +2907,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect, std
                     // a currently-connected peer.
                     addrman.get().Good(addr);
                     // Select a new table address for our feeler instead.
-                    std::tie(addr, addr_last_try) = addrman.get().Select(true, reachable_nets);
+                    std::tie(addr, addr_last_try) = addrman.get().Select(true, feeler_nets);
                 }
             } else {
                 // Not a feeler
@@ -2953,7 +2973,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect, std
                 if (!m_interrupt_net->sleep_for(rng.rand_uniform_duration<CThreadInterrupt::Clock>(FEELER_SLEEP_WINDOW))) {
                     return;
                 }
-                LogDebug(BCLog::NET, "Making feeler connection to %s\n", addrConnect.ToStringAddrPort());
+                LogDebug(BCLog::NET, "Making %sfeeler connection to %s\n", direct_feeler ? "direct " : "", addrConnect.ToStringAddrPort());
             }
 
             if (preferred_net != std::nullopt) LogDebug(BCLog::NET, "Making network specific connection to %s on %s.\n", addrConnect.ToStringAddrPort(), GetNetworkName(preferred_net.value()));
